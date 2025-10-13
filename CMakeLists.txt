@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(CNanoLog C)
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
 
 # Library
 add_library(cnanolog src/cnanolog.c src/platform.c src/ring_buffer.c)

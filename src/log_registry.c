@@ -98,9 +98,14 @@ uint32_t log_registry_register(log_registry_t* registry,
     site->line_number = line_number;
     site->num_args = num_args;
 
-    /* Copy argument types */
-    memcpy(site->arg_types, arg_types, num_args);
-    memset(site->arg_types + num_args, 0, CNANOLOG_MAX_ARGS - num_args);
+    /* Copy argument types (convert uint8_t -> cnanolog_arg_type_t) */
+    for (uint8_t i = 0; i < num_args; i++) {
+        site->arg_types[i] = (cnanolog_arg_type_t)arg_types[i];
+    }
+    /* Zero remaining elements */
+    for (uint8_t i = num_args; i < CNANOLOG_MAX_ARGS; i++) {
+        site->arg_types[i] = ARG_TYPE_NONE;
+    }
 
     registry->count++;
 

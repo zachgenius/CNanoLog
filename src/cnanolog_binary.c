@@ -231,28 +231,9 @@ void cnanolog_shutdown(void) {
     uint32_t num_sites = 0;
     const log_site_t* sites = log_registry_get_all(&g_registry, &num_sites);
 
-    /* Convert to log_site_info_t format for binary_writer */
-    log_site_info_t* site_infos = NULL;
-    if (num_sites > 0) {
-        site_infos = (log_site_info_t*)malloc(num_sites * sizeof(log_site_info_t));
-        for (uint32_t i = 0; i < num_sites; i++) {
-            site_infos[i].log_id = sites[i].log_id;
-            site_infos[i].log_level = sites[i].log_level;
-            site_infos[i].filename = sites[i].filename;
-            site_infos[i].format = sites[i].format;
-            site_infos[i].line_number = sites[i].line_number;
-            site_infos[i].num_args = sites[i].num_args;
-            memcpy(site_infos[i].arg_types, sites[i].arg_types, CNANOLOG_MAX_ARGS);
-        }
-    }
-
     /* Close binary writer (writes dictionary) */
-    if (binwriter_close(g_binary_writer, site_infos, num_sites) != 0) {
+    if (binwriter_close(g_binary_writer, sites, num_sites) != 0) {
         fprintf(stderr, "cnanolog_shutdown: Failed to close binary writer\n");
-    }
-
-    if (site_infos != NULL) {
-        free(site_infos);
     }
 
     /* Clean up */

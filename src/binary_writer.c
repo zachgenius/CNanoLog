@@ -3,6 +3,7 @@
  */
 
 #include "binary_writer.h"
+#include "log_registry.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,7 +73,7 @@ static int buffer_write(binary_writer_t* writer, const void* data, size_t len) {
  * Write dictionary entry (fixed part + variable strings).
  * Returns 0 on success, -1 on failure.
  */
-static int write_dict_entry(binary_writer_t* writer, const log_site_info_t* site) {
+static int write_dict_entry(binary_writer_t* writer, const log_site_t* site) {
     cnanolog_dict_entry_t entry;
 
     /* Fill fixed part */
@@ -252,7 +253,7 @@ int binwriter_flush(binary_writer_t* writer) {
 }
 
 int binwriter_close(binary_writer_t* writer,
-                    const log_site_info_t* sites,
+                    const log_site_t* sites,
                     uint32_t num_sites) {
     if (writer == NULL) {
         return -1;

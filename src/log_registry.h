@@ -23,7 +23,7 @@ extern "C" {
 
 /**
  * Information about a single log call site.
- * Matches log_site_info_t from binary_writer.h
+ * Used both for runtime registry and for writing to dictionary.
  */
 typedef struct {
     uint32_t log_id;
@@ -32,7 +32,7 @@ typedef struct {
     const char* format;
     uint32_t line_number;
     uint8_t num_args;
-    uint8_t arg_types[CNANOLOG_MAX_ARGS];
+    cnanolog_arg_type_t arg_types[CNANOLOG_MAX_ARGS];
 } log_site_t;
 
 /* ============================================================================
@@ -64,6 +64,8 @@ void log_registry_init(log_registry_t* registry);
  * Register a new log site and return its unique log_id.
  * Thread-safe. If the exact same site (file:line:format) is registered
  * multiple times, returns the same log_id.
+ *
+ * @param arg_types Array of uint8_t enum values (space-efficient from macros)
  *
  * Returns: Unique log_id for this site
  */

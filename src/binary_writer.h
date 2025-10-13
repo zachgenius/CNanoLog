@@ -9,6 +9,7 @@
 
 #include "../include/cnanolog_format.h"
 #include "../include/cnanolog.h"
+#include "log_registry.h"
 #include <stddef.h>
 #include <time.h>
 
@@ -32,20 +33,6 @@ extern "C" {
  * Contains file handle, write buffer, and state tracking.
  */
 typedef struct binary_writer binary_writer_t;
-
-/**
- * Log site information for dictionary.
- * This is what gets written to the dictionary at the end of the file.
- */
-typedef struct {
-    uint32_t log_id;
-    cnanolog_level_t log_level;
-    const char* filename;
-    const char* format;
-    uint32_t line_number;
-    uint8_t num_args;
-    cnanolog_arg_type_t arg_types[CNANOLOG_MAX_ARGS];
-} log_site_info_t;
 
 /* ============================================================================
  * Writer Lifecycle
@@ -125,7 +112,7 @@ int binwriter_flush(binary_writer_t* writer);
  * 4. Closes the file and frees the writer
  */
 int binwriter_close(binary_writer_t* writer,
-                    const log_site_info_t* sites,
+                    const log_site_t* sites,
                     uint32_t num_sites);
 
 /* ============================================================================

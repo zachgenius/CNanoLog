@@ -83,15 +83,17 @@ void _cnanolog_log_binary(uint32_t log_id,
 #define CNANOLOG_LOG_ARGS(level, format, ...) \
     do { \
         static uint32_t __cnanolog_cached_id = UINT32_MAX; \
+        const uint8_t* __cnanolog_arg_types = CNANOLOG_ARG_TYPES(__VA_ARGS__); \
+        uint8_t __cnanolog_num_args = CNANOLOG_COUNT_ARGS(__VA_ARGS__); \
         if (__cnanolog_cached_id == UINT32_MAX) { \
             __cnanolog_cached_id = _cnanolog_register_site( \
                 level, __FILE__, __LINE__, format, \
-                CNANOLOG_COUNT_ARGS(__VA_ARGS__), \
-                CNANOLOG_ARG_TYPES(__VA_ARGS__)); \
+                __cnanolog_num_args, \
+                __cnanolog_arg_types); \
         } \
         _cnanolog_log_binary(__cnanolog_cached_id, \
-                            CNANOLOG_COUNT_ARGS(__VA_ARGS__), \
-                            CNANOLOG_ARG_TYPES(__VA_ARGS__), \
+                            __cnanolog_num_args, \
+                            __cnanolog_arg_types, \
                             __VA_ARGS__); \
     } while(0)
 

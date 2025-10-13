@@ -4,8 +4,18 @@ project(CNanoLog C)
 set(CMAKE_C_STANDARD 99)
 
 # Library
-add_library(cnanolog src/cnanolog.c)
+add_library(cnanolog src/cnanolog.c src/platform.c src/ring_buffer.c)
 target_include_directories(cnanolog PUBLIC include)
+
+# Add platform-specific dependencies
+if(UNIX AND NOT APPLE)
+    target_link_libraries(cnanolog pthread)
+endif()
+
+if(APPLE)
+    target_link_libraries(cnanolog "-pthread")
+endif()
+
 
 # Examples
 option(BUILD_EXAMPLES "Build examples" ON)

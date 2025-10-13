@@ -1,6 +1,9 @@
 #pragma once
 
-// Platform detection
+/* ============================================================================
+ * Platform Detection
+ * ============================================================================ */
+
 #if defined(_WIN32) || defined(_WIN64)
     #define PLATFORM_WINDOWS
 #elif defined(__APPLE__) || defined(__MACH__)
@@ -12,6 +15,35 @@
 #else
     #error "Unsupported platform"
 #endif
+
+/* ============================================================================
+ * Cache-Line Alignment
+ * ============================================================================ */
+
+/**
+ * Cache line size - typically 64 bytes on modern CPUs.
+ * Used to prevent false sharing between threads.
+ */
+#define CACHE_LINE_SIZE 64
+
+/**
+ * Macro to align structure to cache-line boundaries.
+ * Prevents false sharing between producer and consumer threads.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+    #define ALIGN_CACHELINE __attribute__((aligned(CACHE_LINE_SIZE)))
+#elif defined(_MSC_VER)
+    #define ALIGN_CACHELINE __declspec(align(CACHE_LINE_SIZE))
+#else
+    #define ALIGN_CACHELINE
+    #warning "Cache-line alignment not supported on this compiler"
+#endif
+
+/**
+ * Padding to fill remainder of cache line.
+ * Usage: char _pad[CACHE_LINE_PAD(sizeof_used_bytes)];
+ */
+#define CACHE_LINE_PAD(x) (CACHE_LINE_SIZE - ((x) % CACHE_LINE_SIZE))
 
 #ifdef PLATFORM_POSIX
     #include <pthread.h>

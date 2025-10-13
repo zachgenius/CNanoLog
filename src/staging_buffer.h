@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "platform.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -19,7 +20,6 @@ extern "C" {
  * ============================================================================ */
 
 #define STAGING_BUFFER_SIZE (1024 * 1024)  /* 1MB per thread */
-#define CACHE_LINE_SIZE 64                  /* Typical cache line size */
 
 /* ============================================================================
  * Staging Buffer Structure
@@ -50,7 +50,7 @@ extern "C" {
  *   - Shared committed field (own cache line)
  *   - Consumer writes read_pos (own cache line)
  */
-typedef struct {
+typedef struct ALIGN_CACHELINE {
     /* Buffer storage - naturally aligned at start */
     char data[STAGING_BUFFER_SIZE];
 
@@ -67,7 +67,7 @@ typedef struct {
     uint32_t thread_id;
     uint8_t active;
     char _pad3[CACHE_LINE_SIZE - sizeof(size_t) - sizeof(uint32_t) - sizeof(uint8_t)];
-} staging_buffer_t __attribute__((aligned(CACHE_LINE_SIZE)));
+} staging_buffer_t;
 
 /* Compile-time verification of cache-line alignment */
 _Static_assert(sizeof(staging_buffer_t) % CACHE_LINE_SIZE == 0,

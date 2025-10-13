@@ -513,12 +513,17 @@ MIT License - see [LICENSE](LICENSE) file for details.
 If you use CNanoLog in your research, please cite the original NanoLog paper:
 
 ```bibtex
-@inproceedings{nanolog,
-  title = {NanoLog: A Nanosecond Scale Logging System},
-  author = {Mao, Yandong and Kohler, Eddie and Morris, Robert},
-  booktitle = {2018 USENIX Annual Technical Conference (USENIX ATC 18)},
-  year = {2018},
-  pages = {335--350}
+@inproceedings {216075,
+    author = {Stephen Yang and Seo Jin Park and John Ousterhout},
+    title = {{NanoLog}: A Nanosecond Scale Logging System},
+    booktitle = {2018 USENIX Annual Technical Conference (USENIX ATC 18)},
+    year = {2018},
+    isbn = {978-1-939133-01-4},
+    address = {Boston, MA},
+    pages = {335--350},
+    url = {https://www.usenix.org/conference/atc18/presentation/yang-stephen},
+    publisher = {USENIX Association},
+    month = jul
 }
 ```
 

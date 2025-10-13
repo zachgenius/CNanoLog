@@ -11,6 +11,7 @@
 #include "arg_packing.h"
 #include "platform.h"
 #include "staging_buffer.h"
+#include "compressor.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -333,6 +334,7 @@ void _cnanolog_log_binary(uint32_t log_id,
 static void* writer_thread_main(void* arg) {
     (void)arg;
     char temp_buf[MAX_LOG_ENTRY_SIZE];
+    char compressed_buf[MAX_LOG_ENTRY_SIZE];
     size_t last_checked_idx = 0;
 
     /* Batch processing state */
@@ -387,18 +389,52 @@ static void* writer_thread_main(void* arg) {
                 /* Reparse header from full entry */
                 header = (cnanolog_entry_header_t*)temp_buf;
 
-                /* Write to binary file */
+                /* Get log site info for compression */
+                const log_site_t* site = log_registry_get(&g_registry, header->log_id);
+
+                /* Compress argument data */
+                size_t compressed_len = 0;
+                const char* data_to_write;
+                uint16_t data_len_to_write;
+
+                if (site != NULL && site->num_args > 0) {
+                    /* Compress the argument data */
+                    int compress_result = compress_entry_args(
+                        temp_buf + sizeof(cnanolog_entry_header_t),
+                        header->data_length,
+                        compressed_buf,
+                        &compressed_len,
+                        site);
+
+                    if (compress_result == 0) {
+                        /* Compression succeeded */
+                        data_to_write = compressed_buf;
+                        data_len_to_write = (uint16_t)compressed_len;
+                    } else {
+                        /* Compression failed, write uncompressed */
+                        data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
+                        data_len_to_write = header->data_length;
+                    }
+                } else {
+                    /* No arguments or invalid site, write uncompressed */
+                    data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
+                    data_len_to_write = header->data_length;
+                }
+
+                /* Write to binary file (compressed or uncompressed) */
                 binwriter_write_entry(g_binary_writer,
                                     header->log_id,
                                     header->timestamp,
-                                    temp_buf + sizeof(cnanolog_entry_header_t),
-                                    header->data_length);
+                                    data_to_write,
+                                    data_len_to_write);
 
-                /* Track statistics: bytes written */
+                /* Track statistics: bytes written (compressed size) */
 #if defined(__GNUC__) || defined(__clang__)
-                __atomic_fetch_add(&g_stats.total_bytes_written, entry_size, __ATOMIC_RELAXED);
+                __atomic_fetch_add(&g_stats.total_bytes_written,
+                                  sizeof(cnanolog_entry_header_t) + data_len_to_write,
+                                  __ATOMIC_RELAXED);
 #else
-                g_stats.total_bytes_written += entry_size;
+                g_stats.total_bytes_written += sizeof(cnanolog_entry_header_t) + data_len_to_write;
 #endif
 
                 /* Mark this entry as consumed */

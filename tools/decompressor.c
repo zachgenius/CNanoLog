@@ -7,6 +7,7 @@
  */
 
 #include "../include/cnanolog_format.h"
+#include "../src/packer.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -158,6 +159,240 @@ static int load_dictionary(FILE* fp, decompressor_ctx_t* ctx, uint64_t dict_offs
 /* ============================================================================
  * Argument Extraction
  * ============================================================================ */
+
+/**
+ * Count non-string arguments (for nibble calculation).
+ */
+static int count_non_string_args(const dict_entry_t* dict) {
+    int count = 0;
+    for (uint8_t i = 0; i < dict->num_args; i++) {
+        if (dict->arg_types[i] != ARG_TYPE_STRING) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/**
+ * Decompress compressed argument data back to uncompressed format.
+ * Returns number of uncompressed bytes written, or -1 on error.
+ */
+static int decompress_entry_args(const char* compressed,
+                                  size_t compressed_len,
+                                  char* uncompressed,
+                                  size_t uncompressed_size,
+                                  const dict_entry_t* dict) {
+    const char* read_ptr = compressed;
+    char* write_ptr = uncompressed;
+    const char* end_ptr = compressed + compressed_len;
+    const char* write_end = uncompressed + uncompressed_size;
+
+    /* Calculate nibble size and read nibbles */
+    int num_int_args = count_non_string_args(dict);
+    size_t nibble_size = nibble_bytes(num_int_args);
+
+    if (nibble_size > compressed_len) {
+        return -1;  /* Invalid: not enough data for nibbles */
+    }
+
+    const uint8_t* nibbles = (const uint8_t*)read_ptr;
+    read_ptr += nibble_size;
+
+    /* ==================================================================
+     * PASS 1: Read all integers into temporary storage
+     * ================================================================== */
+
+    /* Storage for unpacked integers (max 8 bytes each) */
+    uint64_t int_values[CNANOLOG_MAX_ARGS];
+    int nibble_idx = 0;
+    int int_arg_idx = 0;
+
+    for (uint8_t i = 0; i < dict->num_args; i++) {
+        switch (dict->arg_types[i]) {
+            case ARG_TYPE_INT32: {
+                if (read_ptr >= end_ptr) return -1;
+
+                uint8_t nibble = get_nibble(nibbles, nibble_idx++);
+                uint8_t num_bytes = nibble & 0x07;
+                int is_negative = (nibble & 0x08) ? 1 : 0;
+
+                if (num_bytes == 0 || num_bytes > 4) return -1;
+
+                int32_t val = unpack_int32(&read_ptr, num_bytes, is_negative);
+                int_values[int_arg_idx++] = (uint64_t)(uint32_t)val;  /* Store as uint64 */
+                break;
+            }
+
+            case ARG_TYPE_INT64: {
+                if (read_ptr >= end_ptr) return -1;
+
+                uint8_t nibble = get_nibble(nibbles, nibble_idx++);
+                uint8_t num_bytes = nibble & 0x07;
+                int is_negative = (nibble & 0x08) ? 1 : 0;
+
+                if (num_bytes == 0 || num_bytes > 8) return -1;
+
+                int64_t val = unpack_int64(&read_ptr, num_bytes, is_negative);
+                int_values[int_arg_idx++] = (uint64_t)val;
+                break;
+            }
+
+            case ARG_TYPE_UINT32: {
+                if (read_ptr >= end_ptr) return -1;
+
+                uint8_t nibble = get_nibble(nibbles, nibble_idx++);
+                uint8_t num_bytes = nibble & 0x0F;
+
+                if (num_bytes == 0 || num_bytes > 4) return -1;
+
+                uint32_t val = unpack_uint32(&read_ptr, num_bytes);
+                int_values[int_arg_idx++] = (uint64_t)val;
+                break;
+            }
+
+            case ARG_TYPE_UINT64: {
+                if (read_ptr >= end_ptr) return -1;
+
+                uint8_t nibble = get_nibble(nibbles, nibble_idx++);
+                uint8_t num_bytes = nibble & 0x0F;
+
+                if (num_bytes == 0 || num_bytes > 8) return -1;
+
+                uint64_t val = unpack_uint64(&read_ptr, num_bytes);
+                int_values[int_arg_idx++] = val;
+                break;
+            }
+
+            case ARG_TYPE_DOUBLE: {
+                if (read_ptr + sizeof(double) > end_ptr) return -1;
+
+                nibble_idx++;
+
+                /* Store double bits as uint64 */
+                double d_val;
+                memcpy(&d_val, read_ptr, sizeof(double));
+                uint64_t bits;
+                memcpy(&bits, &d_val, sizeof(uint64_t));
+                int_values[int_arg_idx++] = bits;
+                read_ptr += sizeof(double);
+                break;
+            }
+
+            case ARG_TYPE_POINTER: {
+                if (read_ptr >= end_ptr) return -1;
+
+                uint8_t nibble = get_nibble(nibbles, nibble_idx++);
+                uint8_t num_bytes = nibble & 0x0F;
+
+                if (num_bytes == 0 || num_bytes > 8) return -1;
+
+                uint64_t val = unpack_uint64(&read_ptr, num_bytes);
+                int_values[int_arg_idx++] = val;
+                break;
+            }
+
+            case ARG_TYPE_STRING:
+                /* Skip - strings handled in pass 2 */
+                break;
+
+            default:
+                return -1;
+        }
+    }
+
+    /* ==================================================================
+     * PASS 2: Write all arguments to uncompressed buffer in order
+     * ================================================================== */
+
+    int_arg_idx = 0;  /* Reset for writing */
+
+    for (uint8_t i = 0; i < dict->num_args; i++) {
+        switch (dict->arg_types[i]) {
+            case ARG_TYPE_INT32: {
+                if (write_ptr + sizeof(int32_t) > write_end) return -1;
+                int32_t val = (int32_t)int_values[int_arg_idx++];
+                memcpy(write_ptr, &val, sizeof(int32_t));
+                write_ptr += sizeof(int32_t);
+                break;
+            }
+
+            case ARG_TYPE_INT64: {
+                if (write_ptr + sizeof(int64_t) > write_end) return -1;
+                int64_t val = (int64_t)int_values[int_arg_idx++];
+                memcpy(write_ptr, &val, sizeof(int64_t));
+                write_ptr += sizeof(int64_t);
+                break;
+            }
+
+            case ARG_TYPE_UINT32: {
+                if (write_ptr + sizeof(uint32_t) > write_end) return -1;
+                uint32_t val = (uint32_t)int_values[int_arg_idx++];
+                memcpy(write_ptr, &val, sizeof(uint32_t));
+                write_ptr += sizeof(uint32_t);
+                break;
+            }
+
+            case ARG_TYPE_UINT64: {
+                if (write_ptr + sizeof(uint64_t) > write_end) return -1;
+                uint64_t val = int_values[int_arg_idx++];
+                memcpy(write_ptr, &val, sizeof(uint64_t));
+                write_ptr += sizeof(uint64_t);
+                break;
+            }
+
+            case ARG_TYPE_DOUBLE: {
+                if (write_ptr + sizeof(double) > write_end) return -1;
+                uint64_t bits = int_values[int_arg_idx++];
+                double val;
+                memcpy(&val, &bits, sizeof(double));
+                memcpy(write_ptr, &val, sizeof(double));
+                write_ptr += sizeof(double);
+                break;
+            }
+
+            case ARG_TYPE_POINTER: {
+                if (write_ptr + sizeof(uint64_t) > write_end) return -1;
+                uint64_t val = int_values[int_arg_idx++];
+                memcpy(write_ptr, &val, sizeof(uint64_t));
+                write_ptr += sizeof(uint64_t);
+                break;
+            }
+
+            case ARG_TYPE_STRING: {
+                /* Read and write string from compressed stream */
+                if (read_ptr + sizeof(uint32_t) > end_ptr) return -1;
+
+                uint32_t str_len;
+                memcpy(&str_len, read_ptr, sizeof(uint32_t));
+                read_ptr += sizeof(uint32_t);
+
+                if (write_ptr + sizeof(uint32_t) > write_end) return -1;
+                memcpy(write_ptr, &str_len, sizeof(uint32_t));
+                write_ptr += sizeof(uint32_t);
+
+                if (str_len > 0) {
+                    if (read_ptr + str_len > end_ptr) return -1;
+                    if (write_ptr + str_len > write_end) return -1;
+
+                    memcpy(write_ptr, read_ptr, str_len);
+                    read_ptr += str_len;
+                    write_ptr += str_len;
+                }
+                break;
+            }
+
+            default:
+                return -1;
+        }
+    }
+
+    /* Validate that we consumed all compressed data */
+    if (read_ptr != end_ptr) {
+        return -1;  /* Didn't consume exact amount - likely uncompressed */
+    }
+
+    return (int)(write_ptr - uncompressed);
+}
 
 /**
  * Extract arguments from binary data and format the log message.
@@ -354,6 +589,7 @@ static int decompress_file(const char* input_path, FILE* output_fp) {
     /* Decompress entries */
     uint32_t entries_processed = 0;
     char arg_buffer[CNANOLOG_MAX_ENTRY_SIZE];
+    char uncompressed_buffer[CNANOLOG_MAX_ENTRY_SIZE];
 
     while (entries_processed < header.entry_count) {
         /* Read entry header */
@@ -372,7 +608,7 @@ static int decompress_file(const char* input_path, FILE* output_fp) {
             goto cleanup;
         }
 
-        /* Read argument data */
+        /* Read argument data (compressed) */
         if (entry.data_length > 0) {
             if (fread(arg_buffer, 1, entry.data_length, input_fp) != entry.data_length) {
                 fprintf(stderr, "Error: Failed to read entry data\n");
@@ -387,9 +623,26 @@ static int decompress_file(const char* input_path, FILE* output_fp) {
         /* Get dictionary entry */
         dict_entry_t* dict = &ctx.entries[entry.log_id];
 
+        /* Decompress argument data */
+        const char* data_to_format = arg_buffer;
+        if (entry.data_length > 0) {
+            int decompressed_len = decompress_entry_args(
+                arg_buffer,
+                entry.data_length,
+                uncompressed_buffer,
+                sizeof(uncompressed_buffer),
+                dict);
+
+            if (decompressed_len > 0) {
+                /* Use decompressed data */
+                data_to_format = uncompressed_buffer;
+            }
+            /* If decompression fails, fall back to treating as uncompressed */
+        }
+
         /* Format message */
         char message[2048];
-        format_log_message(&ctx, dict, arg_buffer, message, sizeof(message));
+        format_log_message(&ctx, dict, data_to_format, message, sizeof(message));
 
         /* Output formatted log line */
         fprintf(output_fp, "[%s] [%s] [%s:%u] %s\n",

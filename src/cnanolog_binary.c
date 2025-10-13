@@ -45,6 +45,19 @@ static int32_t g_start_time_nsec = 0;
 static uint64_t g_timestamp_frequency = 0;  /* CPU frequency (Hz) for rdtsc() */
 
 /* ============================================================================
+ * Global Statistics Tracking
+ * ============================================================================ */
+
+static struct {
+    volatile uint64_t total_logs;            /* Logs written by threads */
+    volatile uint64_t dropped_logs;          /* Logs dropped (buffer full) */
+    volatile uint64_t bytes_written;         /* Bytes written to file */
+    volatile uint64_t bytes_compressed_from; /* Uncompressed size */
+    volatile uint64_t bytes_compressed_to;   /* Compressed size */
+    volatile uint64_t background_wakeups;    /* Background thread wakeups */
+} g_stats = {0, 0, 0, 0, 0, 0};
+
+/* ============================================================================
  * Global Buffer Registry (for background thread to find all buffers)
  * ============================================================================ */
 
@@ -76,18 +89,6 @@ static buffer_registry_t g_buffer_registry;
 
 /* Thread ID counter for debugging */
 static volatile uint32_t g_next_thread_id = 1;
-
-/* ============================================================================
- * Statistics Tracking
- * ============================================================================ */
-
-/* Global statistics (updated with atomic operations) */
-static struct {
-    volatile uint64_t total_logs_attempted;
-    volatile uint64_t total_logs_dropped;
-    volatile uint64_t total_bytes_written;
-    volatile uint64_t background_flushes;
-} g_stats;
 
 /* ============================================================================
  * Forward Declarations
@@ -273,21 +274,13 @@ void _cnanolog_log_binary(uint32_t log_id,
         return;
     }
 
-    /* Track statistics: log attempt */
-#if defined(__GNUC__) || defined(__clang__)
-    __atomic_fetch_add(&g_stats.total_logs_attempted, 1, __ATOMIC_RELAXED);
-#else
-    g_stats.total_logs_attempted++;
-#endif
+    /* Track statistics: log written */
+    g_stats.total_logs++;
 
     /* Get thread-local staging buffer (lazy initialization, no lock!) */
     staging_buffer_t* sb = get_or_create_staging_buffer();
     if (sb == NULL) {
-#if defined(__GNUC__) || defined(__clang__)
-        __atomic_fetch_add(&g_stats.total_logs_dropped, 1, __ATOMIC_RELAXED);
-#else
-        g_stats.total_logs_dropped++;
-#endif
+        g_stats.dropped_logs++;
         return;  /* Failed to allocate buffer */
     }
 
@@ -313,11 +306,7 @@ void _cnanolog_log_binary(uint32_t log_id,
     char* write_ptr = staging_reserve(sb, entry_size);
     if (write_ptr == NULL) {
         /* Buffer full, drop log */
-#if defined(__GNUC__) || defined(__clang__)
-        __atomic_fetch_add(&g_stats.total_logs_dropped, 1, __ATOMIC_RELAXED);
-#else
-        g_stats.total_logs_dropped++;
-#endif
+        g_stats.dropped_logs++;
         va_end(args);
         return;
     }
@@ -358,6 +347,9 @@ static void* writer_thread_main(void* arg) {
 
     while (!g_should_exit) {
         int found_work = 0;
+
+        /* Track background thread activity */
+        g_stats.background_wakeups++;
 
         /* Get current number of buffers (lock-free read) */
         size_t num_buffers = g_buffer_registry.count;
@@ -425,6 +417,10 @@ static void* writer_thread_main(void* arg) {
                         /* Compression succeeded */
                         data_to_write = compressed_buf;
                         data_len_to_write = (uint16_t)compressed_len;
+
+                        /* Track compression statistics */
+                        g_stats.bytes_compressed_from += header->data_length;
+                        g_stats.bytes_compressed_to += compressed_len;
                     } else {
                         /* Compression failed, write uncompressed */
                         data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
@@ -442,15 +438,6 @@ static void* writer_thread_main(void* arg) {
                                     header->timestamp,
                                     data_to_write,
                                     data_len_to_write);
-
-                /* Track statistics: bytes written (compressed size) */
-#if defined(__GNUC__) || defined(__clang__)
-                __atomic_fetch_add(&g_stats.total_bytes_written,
-                                  sizeof(cnanolog_entry_header_t) + data_len_to_write,
-                                  __ATOMIC_RELAXED);
-#else
-                g_stats.total_bytes_written += sizeof(cnanolog_entry_header_t) + data_len_to_write;
-#endif
 
                 /* Mark this entry as consumed */
                 staging_consume(sb, entry_size);
@@ -479,13 +466,6 @@ static void* writer_thread_main(void* arg) {
             (entries_since_flush > 0 && !found_work)) {
             /* Flush to disk */
             binwriter_flush(g_binary_writer);
-
-            /* Track statistics: flush */
-#if defined(__GNUC__) || defined(__clang__)
-            __atomic_fetch_add(&g_stats.background_flushes, 1, __ATOMIC_RELAXED);
-#else
-            g_stats.background_flushes++;
-#endif
 
             entries_since_flush = 0;
             last_flush_time = now;
@@ -595,54 +575,42 @@ void cnanolog_get_stats(cnanolog_stats_t* stats) {
         return;
     }
 
-    /* Read counters (atomic for thread safety) */
-#if defined(__GNUC__) || defined(__clang__)
-    stats->total_logs_attempted = __atomic_load_n(&g_stats.total_logs_attempted, __ATOMIC_RELAXED);
-    stats->total_logs_dropped = __atomic_load_n(&g_stats.total_logs_dropped, __ATOMIC_RELAXED);
-    stats->total_bytes_written = __atomic_load_n(&g_stats.total_bytes_written, __ATOMIC_RELAXED);
-    stats->background_flushes = __atomic_load_n(&g_stats.background_flushes, __ATOMIC_RELAXED);
-#else
-    stats->total_logs_attempted = g_stats.total_logs_attempted;
-    stats->total_logs_dropped = g_stats.total_logs_dropped;
-    stats->total_bytes_written = g_stats.total_bytes_written;
-    stats->background_flushes = g_stats.background_flushes;
-#endif
+    /* Read counters (volatile reads for thread safety) */
+    stats->total_logs_written = g_stats.total_logs;
+    stats->dropped_logs = g_stats.dropped_logs;
+    stats->background_wakeups = g_stats.background_wakeups;
 
-    /* Calculate derived stats */
-    stats->total_logs_written = stats->total_logs_attempted - stats->total_logs_dropped;
-
-    /* Current state */
-    stats->active_threads = 0;
-    stats->total_buffers = (uint32_t)g_buffer_registry.count;
-    stats->max_buffer_fill_percent = 0;
-
-    /* Scan all buffers to get active count and max fill */
-    for (size_t i = 0; i < g_buffer_registry.count; i++) {
-        staging_buffer_t* sb = g_buffer_registry.buffers[i];
-        if (sb != NULL) {
-            if (sb->active) {
-                stats->active_threads++;
-            }
-
-            uint8_t fill = staging_fill_percent(sb);
-            if (fill > stats->max_buffer_fill_percent) {
-                stats->max_buffer_fill_percent = fill;
-            }
-        }
+    /* Get bytes written from binary writer */
+    if (g_binary_writer != NULL) {
+        stats->total_bytes_written = binwriter_get_bytes_written(g_binary_writer);
+    } else {
+        stats->total_bytes_written = 0;
     }
+
+    /* Calculate compression ratio */
+    if (g_stats.bytes_compressed_from > 0) {
+        stats->compression_ratio_x100 =
+            (g_stats.bytes_compressed_from * 100) / g_stats.bytes_compressed_to;
+    } else {
+        stats->compression_ratio_x100 = 100;  /* 1.00x (no compression yet) */
+    }
+
+    /* Count active staging buffers */
+    stats->staging_buffers_active = g_buffer_registry.count;
 }
 
 void cnanolog_reset_stats(void) {
-    /* Reset all counters to zero (atomic) */
-#if defined(__GNUC__) || defined(__clang__)
-    __atomic_store_n(&g_stats.total_logs_attempted, 0, __ATOMIC_RELAXED);
-    __atomic_store_n(&g_stats.total_logs_dropped, 0, __ATOMIC_RELAXED);
-    __atomic_store_n(&g_stats.total_bytes_written, 0, __ATOMIC_RELAXED);
-    __atomic_store_n(&g_stats.background_flushes, 0, __ATOMIC_RELAXED);
-#else
-    g_stats.total_logs_attempted = 0;
-    g_stats.total_logs_dropped = 0;
-    g_stats.total_bytes_written = 0;
-    g_stats.background_flushes = 0;
-#endif
+    /* Reset all counters to zero */
+    g_stats.total_logs = 0;
+    g_stats.dropped_logs = 0;
+    g_stats.bytes_written = 0;
+    g_stats.bytes_compressed_from = 0;
+    g_stats.bytes_compressed_to = 0;
+    g_stats.background_wakeups = 0;
+}
+
+void cnanolog_preallocate(void) {
+    /* Force allocation of thread-local buffer */
+    staging_buffer_t* sb = get_or_create_staging_buffer();
+    (void)sb;  /* Suppress unused warning */
 }

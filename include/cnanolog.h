@@ -26,6 +26,44 @@ int cnanolog_init(const char* log_file_path);
 void cnanolog_shutdown(void);
 
 /* ============================================================================
+ * Statistics & Monitoring
+ * ============================================================================ */
+
+/**
+ * Runtime statistics for the logging system.
+ */
+typedef struct {
+    uint64_t total_logs_written;     /* Total log entries written */
+    uint64_t total_bytes_written;    /* Total bytes written to file */
+    uint64_t dropped_logs;           /* Logs dropped due to full buffers */
+    uint64_t compression_ratio_x100; /* e.g., 350 = 3.50x compression */
+    uint64_t staging_buffers_active; /* Number of thread-local buffers */
+    uint64_t background_wakeups;     /* Background thread wake count */
+} cnanolog_stats_t;
+
+/**
+ * Get current logging statistics.
+ * Thread-safe, can be called at any time.
+ *
+ * @param stats Pointer to structure to fill with statistics
+ */
+void cnanolog_get_stats(cnanolog_stats_t* stats);
+
+/**
+ * Reset statistics counters to zero.
+ * Does not affect operational state, only counters.
+ */
+void cnanolog_reset_stats(void);
+
+/**
+ * Preallocate thread-local buffer for the calling thread.
+ * Call this before any logging to avoid first-log allocation overhead.
+ *
+ * This is optional but recommended for performance-critical threads.
+ */
+void cnanolog_preallocate(void);
+
+/* ============================================================================
  * Log Levels
  * ============================================================================ */
 
@@ -174,38 +212,6 @@ void _cnanolog_log_binary(uint32_t log_id,
 /* ============================================================================
  * Statistics and Monitoring
  * ============================================================================ */
-
-/**
- * CNanoLog runtime statistics.
- */
-typedef struct {
-    /* Counters (lifetime totals) */
-    uint64_t total_logs_attempted;   /* Total log calls made */
-    uint64_t total_logs_written;     /* Logs successfully written */
-    uint64_t total_logs_dropped;     /* Logs dropped (buffer full) */
-    uint64_t total_bytes_written;    /* Total bytes written to file */
-
-    /* Current state */
-    uint32_t active_threads;         /* Number of threads with buffers */
-    uint32_t total_buffers;          /* Total staging buffers allocated */
-    uint8_t max_buffer_fill_percent; /* Highest buffer fill percentage */
-
-    /* Background thread stats */
-    uint64_t background_flushes;     /* Number of times data was flushed */
-} cnanolog_stats_t;
-
-/**
- * Get current runtime statistics.
- *
- * @param stats Pointer to structure to fill with current stats
- */
-void cnanolog_get_stats(cnanolog_stats_t* stats);
-
-/**
- * Reset all statistics counters to zero.
- * Useful for benchmarking specific workloads.
- */
-void cnanolog_reset_stats(void);
 
 #ifdef __cplusplus
 }

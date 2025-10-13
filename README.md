@@ -51,7 +51,7 @@ Following performance metrics were tested on Apple Silicon (M3 Max) (1.0 GHz cal
 CNanoLog is inspired by the [NanoLog](https://github.com/PlatformLab/NanoLog) paper and implementation from Stanford University:
 
 > **NanoLog: A Nanosecond Scale Logging System**
-> Yandong Mao, Eddie Kohler, and Robert Morris
+> Stephen Yang and Seo Jin Park and John Ousterhout
 > USENIX ATC 2018
 
 Key concepts adapted from NanoLog:

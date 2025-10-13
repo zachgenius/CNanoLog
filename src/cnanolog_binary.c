@@ -12,6 +12,7 @@
 #include "platform.h"
 #include "staging_buffer.h"
 #include "compressor.h"
+#include "cycles.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,6 +42,7 @@ static thread_t g_writer_thread;
 static uint64_t g_start_timestamp = 0;
 static time_t g_start_time_sec = 0;
 static int32_t g_start_time_nsec = 0;
+static uint64_t g_timestamp_frequency = 0;  /* CPU frequency (Hz) for rdtsc() */
 
 /* ============================================================================
  * Global Buffer Registry (for background thread to find all buffers)
@@ -98,6 +100,42 @@ static int buffer_registry_add(buffer_registry_t* registry, staging_buffer_t* bu
 static staging_buffer_t* get_or_create_staging_buffer(void);
 
 /* ============================================================================
+ * Timestamp Calibration (Phase 5)
+ * ============================================================================ */
+
+/**
+ * Calibrate rdtsc() frequency by measuring against wall-clock time.
+ * This is called once at initialization to determine CPU frequency.
+ */
+static void calibrate_timestamp(void) {
+    struct timespec ts1, ts2;
+    uint64_t ticks1, ticks2;
+
+    /* Measure CPU frequency over 100ms */
+    clock_gettime(CLOCK_REALTIME, &ts1);
+    ticks1 = rdtsc();
+
+    /* Sleep for 100 milliseconds */
+    struct timespec sleep_time = {0, 100000000};  /* 100ms = 0.1s */
+    nanosleep(&sleep_time, NULL);
+
+    clock_gettime(CLOCK_REALTIME, &ts2);
+    ticks2 = rdtsc();
+
+    /* Calculate elapsed time in seconds */
+    double elapsed_sec = (ts2.tv_sec - ts1.tv_sec) +
+                         (ts2.tv_nsec - ts1.tv_nsec) / 1e9;
+
+    /* Calculate ticks per second (CPU frequency) */
+    g_timestamp_frequency = (uint64_t)((ticks2 - ticks1) / elapsed_sec);
+
+    /* Record start time and timestamp */
+    g_start_time_sec = ts1.tv_sec;
+    g_start_time_nsec = ts1.tv_nsec;
+    g_start_timestamp = ticks1;
+}
+
+/* ============================================================================
  * Initialization
  * ============================================================================ */
 
@@ -117,16 +155,12 @@ int cnanolog_init(const char* log_file_path) {
         return -1;
     }
 
-    /* Record start time */
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    g_start_time_sec = ts.tv_sec;
-    g_start_time_nsec = (int32_t)ts.tv_nsec;
-    g_start_timestamp = get_timestamp();
+    /* Calibrate timestamp (Phase 5: Measure CPU frequency) */
+    calibrate_timestamp();
 
-    /* Write file header (use simple counter for now, rdtsc in Phase 5) */
+    /* Write file header with calibrated frequency */
     if (binwriter_write_header(g_binary_writer,
-                               1000000000ULL,  /* 1 GHz frequency (placeholder) */
+                               g_timestamp_frequency,  /* Calibrated CPU frequency */
                                g_start_timestamp,
                                g_start_time_sec,
                                g_start_time_nsec) != 0) {
@@ -568,9 +602,7 @@ static staging_buffer_t* get_or_create_staging_buffer(void) {
  * Get current timestamp (simple counter for now, will use rdtsc in Phase 5).
  */
 static uint64_t get_timestamp(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+    return rdtsc();  /* Phase 5: High-resolution timestamps (~5-10ns overhead) */
 }
 
 /* ============================================================================

@@ -157,5 +157,3 @@ static inline size_t arg_pack_write(char* buffer, size_t buffer_size,
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* CNANOLOG_ARG_PACKING_H */

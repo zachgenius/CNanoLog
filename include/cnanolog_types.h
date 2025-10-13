@@ -4,8 +4,7 @@
  * Uses C11 _Generic to automatically detect argument types at compile time.
  */
 
-#ifndef CNANOLOG_TYPES_H
-#define CNANOLOG_TYPES_H
+#pragma once
 
 #include "cnanolog_format.h"
 #include <stdint.h>
@@ -155,5 +154,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* CNANOLOG_TYPES_H */

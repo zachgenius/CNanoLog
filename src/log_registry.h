@@ -5,8 +5,7 @@
  * Each unique log site (file:line:format) gets a unique log_id.
  */
 
-#ifndef CNANOLOG_LOG_REGISTRY_H
-#define CNANOLOG_LOG_REGISTRY_H
+#pragma once
 
 #include "../include/cnanolog.h"
 #include "../include/cnanolog_format.h"
@@ -103,5 +102,3 @@ void log_registry_destroy(log_registry_t* registry);
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* CNANOLOG_LOG_REGISTRY_H */

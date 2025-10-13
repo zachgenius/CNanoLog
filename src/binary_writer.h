@@ -5,8 +5,7 @@
  * format specification in docs/BINARY_FORMAT_SPEC.md
  */
 
-#ifndef BINARY_WRITER_H
-#define BINARY_WRITER_H
+#pragma once
 
 #include "../include/cnanolog_format.h"
 #include "../include/cnanolog.h"
@@ -160,5 +159,3 @@ size_t binwriter_get_buffered_bytes(const binary_writer_t* writer);
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* BINARY_WRITER_H */

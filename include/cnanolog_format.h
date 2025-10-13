@@ -5,8 +5,7 @@
  * See docs/BINARY_FORMAT_SPEC.md for detailed specification.
  */
 
-#ifndef CNANOLOG_FORMAT_H
-#define CNANOLOG_FORMAT_H
+#pragma once
 
 #include <stdint.h>
 
@@ -231,5 +230,3 @@ static inline int cnanolog_check_endianness(uint32_t endian_marker) {
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* CNANOLOG_FORMAT_H */

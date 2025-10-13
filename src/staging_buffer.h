@@ -19,6 +19,7 @@ extern "C" {
  * ============================================================================ */
 
 #define STAGING_BUFFER_SIZE (1024 * 1024)  /* 1MB per thread */
+#define CACHE_LINE_SIZE 64                  /* Typical cache line size */
 
 /* ============================================================================
  * Staging Buffer Structure
@@ -42,23 +43,35 @@ extern "C" {
  *   - Increments read_pos after consuming
  *
  * Note: Single-producer, single-consumer model (one thread writes, background thread reads)
+ *
+ * Cache-Line Optimization:
+ *   Fields are padded to separate cache lines to avoid false sharing.
+ *   - Producer writes write_pos (own cache line)
+ *   - Shared committed field (own cache line)
+ *   - Consumer writes read_pos (own cache line)
  */
 typedef struct {
-    char data[STAGING_BUFFER_SIZE];  /* Buffer storage */
+    /* Buffer storage - naturally aligned at start */
+    char data[STAGING_BUFFER_SIZE];
 
-    /* Producer state (written by logging thread) */
-    size_t write_pos;                /* Next write position */
+    /* Producer cache line - only written by logging thread */
+    size_t write_pos;
+    char _pad1[CACHE_LINE_SIZE - sizeof(size_t)];
 
-    /* Shared state (written by producer, read by consumer) */
-    volatile size_t committed;       /* Consumer can read up to this position */
+    /* Shared cache line - written by producer, read by consumer */
+    volatile size_t committed;
+    char _pad2[CACHE_LINE_SIZE - sizeof(size_t)];
 
-    /* Consumer state (written by background thread) */
-    size_t read_pos;                 /* Next read position */
+    /* Consumer cache line - written by background thread */
+    size_t read_pos;
+    uint32_t thread_id;
+    uint8_t active;
+    char _pad3[CACHE_LINE_SIZE - sizeof(size_t) - sizeof(uint32_t) - sizeof(uint8_t)];
+} staging_buffer_t __attribute__((aligned(CACHE_LINE_SIZE)));
 
-    /* Metadata */
-    uint32_t thread_id;              /* Thread that owns this buffer */
-    uint8_t active;                  /* 1 if thread is still using buffer */
-} staging_buffer_t;
+/* Compile-time verification of cache-line alignment */
+_Static_assert(sizeof(staging_buffer_t) % CACHE_LINE_SIZE == 0,
+               "staging_buffer_t size must be multiple of cache line size");
 
 /* ============================================================================
  * Lifecycle

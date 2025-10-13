@@ -20,6 +20,10 @@
 #define MAX_LOG_ENTRY_SIZE 4096
 #define MAX_STAGING_BUFFERS 256  /* Maximum number of concurrent threads */
 
+/* Batch processing configuration */
+#define FLUSH_BATCH_SIZE 100           /* Flush every N entries */
+#define FLUSH_INTERVAL_MS 100          /* OR flush every N milliseconds */
+
 /* ============================================================================
  * Global State
  * ============================================================================ */
@@ -69,6 +73,18 @@ static buffer_registry_t g_buffer_registry;
 
 /* Thread ID counter for debugging */
 static volatile uint32_t g_next_thread_id = 1;
+
+/* ============================================================================
+ * Statistics Tracking
+ * ============================================================================ */
+
+/* Global statistics (updated with atomic operations) */
+static struct {
+    volatile uint64_t total_logs_attempted;
+    volatile uint64_t total_logs_dropped;
+    volatile uint64_t total_bytes_written;
+    volatile uint64_t background_flushes;
+} g_stats;
 
 /* ============================================================================
  * Forward Declarations
@@ -241,9 +257,21 @@ void _cnanolog_log_binary(uint32_t log_id,
         return;
     }
 
+    /* Track statistics: log attempt */
+#if defined(__GNUC__) || defined(__clang__)
+    __atomic_fetch_add(&g_stats.total_logs_attempted, 1, __ATOMIC_RELAXED);
+#else
+    g_stats.total_logs_attempted++;
+#endif
+
     /* Get thread-local staging buffer (lazy initialization, no lock!) */
     staging_buffer_t* sb = get_or_create_staging_buffer();
     if (sb == NULL) {
+#if defined(__GNUC__) || defined(__clang__)
+        __atomic_fetch_add(&g_stats.total_logs_dropped, 1, __ATOMIC_RELAXED);
+#else
+        g_stats.total_logs_dropped++;
+#endif
         return;  /* Failed to allocate buffer */
     }
 
@@ -268,7 +296,12 @@ void _cnanolog_log_binary(uint32_t log_id,
      */
     char* write_ptr = staging_reserve(sb, entry_size);
     if (write_ptr == NULL) {
-        /* Buffer full, drop log (could add statistics here) */
+        /* Buffer full, drop log */
+#if defined(__GNUC__) || defined(__clang__)
+        __atomic_fetch_add(&g_stats.total_logs_dropped, 1, __ATOMIC_RELAXED);
+#else
+        g_stats.total_logs_dropped++;
+#endif
         va_end(args);
         return;
     }
@@ -301,6 +334,10 @@ static void* writer_thread_main(void* arg) {
     (void)arg;
     char temp_buf[MAX_LOG_ENTRY_SIZE];
     size_t last_checked_idx = 0;
+
+    /* Batch processing state */
+    size_t entries_since_flush = 0;
+    uint64_t last_flush_time = get_timestamp();
 
     while (!g_should_exit) {
         int found_work = 0;
@@ -357,9 +394,17 @@ static void* writer_thread_main(void* arg) {
                                     temp_buf + sizeof(cnanolog_entry_header_t),
                                     header->data_length);
 
+                /* Track statistics: bytes written */
+#if defined(__GNUC__) || defined(__clang__)
+                __atomic_fetch_add(&g_stats.total_bytes_written, entry_size, __ATOMIC_RELAXED);
+#else
+                g_stats.total_bytes_written += entry_size;
+#endif
+
                 /* Mark this entry as consumed */
                 staging_consume(sb, entry_size);
 
+                entries_since_flush++;
                 found_work = 1;
             }
         }
@@ -369,8 +414,31 @@ static void* writer_thread_main(void* arg) {
             last_checked_idx = (last_checked_idx + 1) % num_buffers;
         }
 
-        /* Flush to disk periodically */
-        binwriter_flush(g_binary_writer);
+        /*
+         * Batch flush strategy:
+         * Flush when we've written N entries OR when enough time has passed.
+         * This reduces flush frequency while ensuring data doesn't sit too long.
+         */
+        uint64_t now = get_timestamp();
+        uint64_t elapsed_ns = now - last_flush_time;
+        uint64_t elapsed_ms = elapsed_ns / 1000000;
+
+        if (entries_since_flush >= FLUSH_BATCH_SIZE ||
+            elapsed_ms >= FLUSH_INTERVAL_MS ||
+            (entries_since_flush > 0 && !found_work)) {
+            /* Flush to disk */
+            binwriter_flush(g_binary_writer);
+
+            /* Track statistics: flush */
+#if defined(__GNUC__) || defined(__clang__)
+            __atomic_fetch_add(&g_stats.background_flushes, 1, __ATOMIC_RELAXED);
+#else
+            g_stats.background_flushes++;
+#endif
+
+            entries_since_flush = 0;
+            last_flush_time = now;
+        }
 
         /* If no work was found, sleep briefly to avoid spinning */
         if (!found_work) {
@@ -467,4 +535,65 @@ static uint64_t get_timestamp(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+/* ============================================================================
+ * Statistics API Implementation
+ * ============================================================================ */
+
+void cnanolog_get_stats(cnanolog_stats_t* stats) {
+    if (stats == NULL) {
+        return;
+    }
+
+    /* Read counters (atomic for thread safety) */
+#if defined(__GNUC__) || defined(__clang__)
+    stats->total_logs_attempted = __atomic_load_n(&g_stats.total_logs_attempted, __ATOMIC_RELAXED);
+    stats->total_logs_dropped = __atomic_load_n(&g_stats.total_logs_dropped, __ATOMIC_RELAXED);
+    stats->total_bytes_written = __atomic_load_n(&g_stats.total_bytes_written, __ATOMIC_RELAXED);
+    stats->background_flushes = __atomic_load_n(&g_stats.background_flushes, __ATOMIC_RELAXED);
+#else
+    stats->total_logs_attempted = g_stats.total_logs_attempted;
+    stats->total_logs_dropped = g_stats.total_logs_dropped;
+    stats->total_bytes_written = g_stats.total_bytes_written;
+    stats->background_flushes = g_stats.background_flushes;
+#endif
+
+    /* Calculate derived stats */
+    stats->total_logs_written = stats->total_logs_attempted - stats->total_logs_dropped;
+
+    /* Current state */
+    stats->active_threads = 0;
+    stats->total_buffers = (uint32_t)g_buffer_registry.count;
+    stats->max_buffer_fill_percent = 0;
+
+    /* Scan all buffers to get active count and max fill */
+    for (size_t i = 0; i < g_buffer_registry.count; i++) {
+        staging_buffer_t* sb = g_buffer_registry.buffers[i];
+        if (sb != NULL) {
+            if (sb->active) {
+                stats->active_threads++;
+            }
+
+            uint8_t fill = staging_fill_percent(sb);
+            if (fill > stats->max_buffer_fill_percent) {
+                stats->max_buffer_fill_percent = fill;
+            }
+        }
+    }
+}
+
+void cnanolog_reset_stats(void) {
+    /* Reset all counters to zero (atomic) */
+#if defined(__GNUC__) || defined(__clang__)
+    __atomic_store_n(&g_stats.total_logs_attempted, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_stats.total_logs_dropped, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_stats.total_bytes_written, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_stats.background_flushes, 0, __ATOMIC_RELAXED);
+#else
+    g_stats.total_logs_attempted = 0;
+    g_stats.total_logs_dropped = 0;
+    g_stats.total_bytes_written = 0;
+    g_stats.background_flushes = 0;
+#endif
 }

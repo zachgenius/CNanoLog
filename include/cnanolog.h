@@ -169,6 +169,42 @@ void _cnanolog_log_binary(uint32_t log_id,
 #define log_debug4(format, a1, a2, a3, a4) \
     CNANOLOG_LOG_ARGS(LOG_LEVEL_DEBUG, format, a1, a2, a3, a4)
 
+/* ============================================================================
+ * Statistics and Monitoring
+ * ============================================================================ */
+
+/**
+ * CNanoLog runtime statistics.
+ */
+typedef struct {
+    /* Counters (lifetime totals) */
+    uint64_t total_logs_attempted;   /* Total log calls made */
+    uint64_t total_logs_written;     /* Logs successfully written */
+    uint64_t total_logs_dropped;     /* Logs dropped (buffer full) */
+    uint64_t total_bytes_written;    /* Total bytes written to file */
+
+    /* Current state */
+    uint32_t active_threads;         /* Number of threads with buffers */
+    uint32_t total_buffers;          /* Total staging buffers allocated */
+    uint8_t max_buffer_fill_percent; /* Highest buffer fill percentage */
+
+    /* Background thread stats */
+    uint64_t background_flushes;     /* Number of times data was flushed */
+} cnanolog_stats_t;
+
+/**
+ * Get current runtime statistics.
+ *
+ * @param stats Pointer to structure to fill with current stats
+ */
+void cnanolog_get_stats(cnanolog_stats_t* stats);
+
+/**
+ * Reset all statistics counters to zero.
+ * Useful for benchmarking specific workloads.
+ */
+void cnanolog_reset_stats(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -8,6 +8,53 @@ project(CNanoLog VERSION ${CNANOLOG_VERSION} LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 
+# ============================================================================
+# Build Type and Optimization Flags
+# ============================================================================
+
+# Set default build type to Release if not specified
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING
+        "Choose the type of build: Debug Release RelWithDebInfo MinSizeRel" FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+        "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
+endif()
+
+# Optimization flags for Release builds
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    # GCC and Clang
+    set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O3 -g -DNDEBUG")
+    set(CMAKE_C_FLAGS_DEBUG "-O0 -g")
+
+    # Additional performance flags for Release
+    if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        add_compile_options(
+            -march=native          # Optimize for current CPU
+            -ffast-math           # Aggressive math optimizations
+            -funroll-loops        # Unroll loops for speed
+            -finline-functions    # Aggressive inlining
+        )
+    endif()
+elseif(MSVC)
+    # MSVC
+    set(CMAKE_C_FLAGS_RELEASE "/O2 /Ob2 /DNDEBUG")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "/O2 /Ob2 /Zi /DNDEBUG")
+    set(CMAKE_C_FLAGS_DEBUG "/Od /Zi")
+endif()
+
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "C Compiler: ${CMAKE_C_COMPILER_ID}")
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    message(STATUS "Optimization: Enabled (-O3 with performance flags)")
+elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(STATUS "Optimization: Disabled (Debug mode)")
+endif()
+
+# ============================================================================
+# Library Definition
+# ============================================================================
+
 # Library - can be built as STATIC or SHARED
 add_library(cnanolog
     src/cnanolog.c

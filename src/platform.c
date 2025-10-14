@@ -1,9 +1,14 @@
+/* Define _GNU_SOURCE FIRST before any includes for Linux */
+#if defined(__linux__)
+    #define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 
 /* Linux-specific headers for CPU affinity */
 #if defined(__linux__)
-    #define _GNU_SOURCE
     #include <sched.h>
+    #include <pthread.h>
 #endif
 
 /* macOS-specific headers for CPU affinity - include BEFORE platform.h */

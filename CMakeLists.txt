@@ -57,7 +57,6 @@ endif()
 
 # Library - can be built as STATIC or SHARED
 add_library(cnanolog
-    src/cnanolog.c
     src/cnanolog_binary.c
     src/platform.c
     src/ring_buffer.c

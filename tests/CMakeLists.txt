@@ -19,6 +19,7 @@ set(TESTS
     test_buffer_overflow
     test_arg_types
     benchmark_latency
+    benchmark_comprehensive
     debug_count
 )
 

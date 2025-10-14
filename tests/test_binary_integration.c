@@ -52,7 +52,7 @@ int main() {
 
     /* Decompress and verify */
     printf("5. Decompressing log...\n");
-    int ret = system("./decompressor test_integration.clog test_integration.txt 2>&1");
+    int ret = system("../tools/decompressor test_integration.clog test_integration.txt 2>&1");
     if (ret != 0) {
         fprintf(stderr, "FAIL: Decompressor failed (exit code %d)\n", ret);
         return 1;

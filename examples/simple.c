@@ -10,7 +10,7 @@ int main() {
     log_info("Application starting up.");
 
     for (int i = 0; i < 10; ++i) {
-        log_debug("Loop iteration %d", i);
+        log_debug1("Loop iteration %d", i);
     }
 
     log_warn("This is a warning message.");

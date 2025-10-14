@@ -168,7 +168,7 @@ int test_write_dictionary() {
     binwriter_write_entry(writer, 1, 200, NULL, 0);
 
     /* Prepare dictionary */
-    log_site_info_t sites[2];
+    log_site_t sites[2];
 
     sites[0].log_id = 0;
     sites[0].log_level = LOG_LEVEL_INFO;

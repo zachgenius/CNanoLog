@@ -1,4 +1,5 @@
-#include "src/binary_writer.h"
+#include "binary_writer.h"
+#include "log_registry.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -6,12 +7,12 @@ int main() {
     /* Create test log */
     binary_writer_t* w = binwriter_create("test.clog");
     binwriter_write_header(w, 1000000000ULL, 0, 1700000000, 0);
-    
+
     /* Two integers */
     struct { int32_t a, b; } vals = {100, 200};
     binwriter_write_entry(w, 0, 1000, &vals, sizeof(vals));
-    
-    log_site_info_t site = {
+
+    log_site_t site = {
         .log_id = 0,
         .log_level = LOG_LEVEL_INFO,
         .filename = "test.c",
@@ -41,7 +42,7 @@ int main() {
     
     /* Decompress */
     printf("\nDecompressor output:\n");
-    system("./decompressor test.clog");
+    system("../tools/decompressor test.clog");
     
     return 0;
 }

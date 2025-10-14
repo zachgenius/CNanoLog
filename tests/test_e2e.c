@@ -74,7 +74,7 @@ int main() {
     }
 
     /* Prepare dictionary */
-    log_site_info_t sites[4];
+    log_site_t sites[4];
 
     sites[0].log_id = 0;
     sites[0].log_level = LOG_LEVEL_INFO;
@@ -122,9 +122,9 @@ int main() {
 
     printf("\nPhase 2: Decompressing binary log...\n");
 
-    /* Run decompressor (assume it's in same directory when tests run from build/) */
+    /* Run decompressor (located in build/tools/) */
     char cmd[256];
-    snprintf(cmd, sizeof(cmd), "./decompressor %s %s 2>&1",
+    snprintf(cmd, sizeof(cmd), "../tools/decompressor %s %s 2>&1",
              TEST_BINARY_FILE, TEST_TEXT_FILE);
     int result = system(cmd);
     if (result != 0) {

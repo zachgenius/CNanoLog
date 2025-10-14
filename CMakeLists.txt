@@ -27,18 +27,18 @@ if(APPLE)
 endif()
 
 
+# Tools (decompressor)
+add_subdirectory(tools)
+
 # Examples
 option(BUILD_EXAMPLES "Build examples" ON)
 if(BUILD_EXAMPLES)
-    add_executable(simple_example examples/simple.c)
-    target_link_libraries(simple_example cnanolog)
+    add_subdirectory(examples)
 endif()
 
 # Tests
 option(BUILD_TESTS "Build tests" ON)
 if(BUILD_TESTS)
     enable_testing()
-    add_executable(simple_test tests/simple_test.c)
-    target_link_libraries(simple_test cnanolog)
-    add_test(NAME simple_test COMMAND simple_test)
+    add_subdirectory(tests)
 endif()

@@ -11,6 +11,7 @@ set(EXAMPLES
     statistics_monitoring
     production_server
     error_handling
+    realtime_logging
 )
 
 # Build each example

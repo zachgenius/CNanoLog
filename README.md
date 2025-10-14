@@ -581,7 +581,9 @@ if (stats.total_bytes_written > 1GB) {
 - [x] Phase 8: Add cpu affinity support
 
 ### Future Enhancements
+- [ ] Single-header version for easy integration
 - [ ] Burst scenario optimizations (Latency spikes)
+- [ ] Benchmarking suite for performance regression
 - [ ] Plan text logging mode (human-readable without decompressor)
 - [ ] Log rotation (size/time-based)
 - [ ] Multiple log outputs (file + network)

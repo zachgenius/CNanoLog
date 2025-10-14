@@ -1,0 +1,34 @@
+@PACKAGE_INIT@
+
+# CNanoLog CMake configuration file
+#
+# This file provides the CNanoLog::cnanolog target for use with find_package()
+#
+# Example usage:
+#   find_package(CNanoLog REQUIRED)
+#   target_link_libraries(myapp PRIVATE CNanoLog::cnanolog)
+
+include(CMakeFindDependencyMacro)
+
+# Find required dependencies
+if(UNIX AND NOT APPLE)
+    find_dependency(Threads)
+endif()
+
+# Include targets file
+include("${CMAKE_CURRENT_LIST_DIR}/CNanoLogTargets.cmake")
+
+# Provide variables for legacy usage
+set(CNANOLOG_INCLUDE_DIRS "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+set(CNANOLOG_LIBRARIES CNanoLog::cnanolog)
+set(CNANOLOG_FOUND TRUE)
+
+# Print configuration info
+if(NOT CNanoLog_FIND_QUIETLY)
+    message(STATUS "Found CNanoLog: ${PACKAGE_PREFIX_DIR}")
+    message(STATUS "  Version: @PROJECT_VERSION@")
+    message(STATUS "  Include dirs: ${CNANOLOG_INCLUDE_DIRS}")
+    message(STATUS "  Libraries: ${CNANOLOG_LIBRARIES}")
+endif()
+
+check_required_components(CNanoLog)

@@ -214,7 +214,7 @@ int main(void) {
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/CNanoLog.git
+git clone https://github.com/zachgenius/CNanoLog.git
 cd CNanoLog
 
 # Create build directory
@@ -253,6 +253,21 @@ cp -r src include your_project/
 gcc myapp.c cnanolog_binary.c binary_writer.c log_registry.c \
     staging_buffer.c background_thread.c -o myapp
 ```
+
+**Option 3: vcpkg Package Manager**
+
+CNanoLog supports vcpkg for easy cross-platform installation:
+
+```bash
+# Install via vcpkg (once published)
+vcpkg install cnanolog
+
+# Use in your CMake project
+find_package(CNanoLog CONFIG REQUIRED)
+target_link_libraries(myapp PRIVATE CNanoLog::cnanolog)
+```
+
+For detailed vcpkg integration instructions, see [VCPKG.md](docs/VCPKG.md).
 
 ## Architecture
 
@@ -579,7 +594,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Contact
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/CNanoLog/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/CNanoLog/discussions)
+- **Issues**: [GitHub Issues](https://github.com/zachgenius/CNanoLog/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/zachgenius/CNanoLog/discussions)
 
 **CNanoLog** - Ultra-fast logging for performance-critical C applications.

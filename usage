@@ -1,0 +1,16 @@
+CNanoLog provides ultra-fast, low-latency binary logging for C11.
+
+The package CNanoLog provides CMake targets:
+
+    find_package(CNanoLog CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE CNanoLog::cnanolog)
+
+Features:
+  - Nanosecond precision timestamps
+  - Lock-free logging (10-20ns per log)
+  - Binary format with compression
+  - Thread-safe with per-thread staging buffers
+  - CPU affinity support for 3x+ performance
+  - Zero-copy architecture
+
+For more information, see: https://github.com/zachgenius/CNanoLog

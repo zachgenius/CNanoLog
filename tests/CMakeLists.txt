@@ -20,6 +20,7 @@ set(TESTS
     test_arg_types
     benchmark_latency
     benchmark_comprehensive
+    test_burst_scenario
     debug_count
 )
 

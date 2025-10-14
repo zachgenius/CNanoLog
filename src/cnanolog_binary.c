@@ -22,9 +22,21 @@
 #define MAX_LOG_ENTRY_SIZE 4096
 #define MAX_STAGING_BUFFERS 256  /* Maximum number of concurrent threads */
 
-/* Batch processing configuration */
-#define FLUSH_BATCH_SIZE 100           /* Flush every N entries */
-#define FLUSH_INTERVAL_MS 100          /* OR flush every N milliseconds */
+/**
+ * Batch processing configuration for background writer.
+ *
+ * The background writer flushes when:
+ * 1. FLUSH_BATCH_SIZE entries written, OR
+ * 2. FLUSH_INTERVAL_MS milliseconds elapsed, OR
+ * 3. No more work found (buffer empty)
+ *
+ * Tuning for different scenarios:
+ * - High throughput/burst: FLUSH_BATCH_SIZE=1000, INTERVAL=200ms (more buffering, fewer flushes)
+ * - Low latency: FLUSH_BATCH_SIZE=10, INTERVAL=10ms (less buffering, more flushes)
+ * - Balanced (default): FLUSH_BATCH_SIZE=1000, INTERVAL=200ms
+ */
+#define FLUSH_BATCH_SIZE 500           /* Flush every N entries */
+#define FLUSH_INTERVAL_MS 100           /* OR flush every N milliseconds */
 
 /* ============================================================================
  * Global State

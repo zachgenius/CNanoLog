@@ -19,7 +19,22 @@ extern "C" {
  * Configuration
  * ============================================================================ */
 
-#define STAGING_BUFFER_SIZE (1024 * 1024)  /* 1MB per thread */
+/**
+ * Staging buffer size per thread.
+ *
+ * Tuning guidelines:
+ * - 1MB (default): Good for steady logging, ~250K logs buffered
+ * - 4MB: Good for moderate bursts, ~1M logs buffered
+ * - 8MB: Good for heavy bursts, ~2M logs buffered
+ * - 16MB+: For extreme burst scenarios
+ *
+ * Trade-offs:
+ * - Larger = more memory per thread, but fewer drops during bursts
+ * - Memory usage = STAGING_BUFFER_SIZE × number of logging threads
+ *
+ * For burst logging scenarios, 4-8MB is recommended.
+ */
+#define STAGING_BUFFER_SIZE (8 * 1024 * 1024)
 
 /* ============================================================================
  * Staging Buffer Structure

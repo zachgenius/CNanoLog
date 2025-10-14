@@ -283,7 +283,7 @@ CMakeToolchain
 ```
 
 For detailed integration instructions:
-- **vcpkg**: See [VCPKG.md](VCPKG.md)
+- **vcpkg**: See [VCPKG.md](docs/VCPKG.md)
 - **Conan**: See [CONAN.md](docs/CONAN.md)
 
 ## Architecture

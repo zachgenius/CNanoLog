@@ -62,3 +62,4 @@ cbake-build-*/
 *.swp
 *.swo
 log/
+__pycache__/

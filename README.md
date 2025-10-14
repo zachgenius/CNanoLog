@@ -582,6 +582,7 @@ if (stats.total_bytes_written > 1GB) {
 
 ### Future Enhancements
 - [ ] Burst scenario optimizations (Latency spikes)
+- [ ] Plan text logging mode (human-readable without decompressor)
 - [ ] Log rotation (size/time-based)
 - [ ] Multiple log outputs (file + network)
 - [ ] Log filtering by level or category

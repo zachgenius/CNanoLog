@@ -454,6 +454,7 @@ make test
 ./test_multithreaded_stress
 ./test_buffer_overflow
 ./benchmark_latency
+./benchmark_comprehensive
 ```
 
 ### Test Coverage
@@ -580,6 +581,7 @@ if (stats.total_bytes_written > 1GB) {
 - [x] Phase 8: Add cpu affinity support
 
 ### Future Enhancements
+- [ ] Burst scenario optimizations (Latency spikes)
 - [ ] Log rotation (size/time-based)
 - [ ] Multiple log outputs (file + network)
 - [ ] Log filtering by level or category

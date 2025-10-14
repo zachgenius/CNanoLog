@@ -63,6 +63,33 @@ void cnanolog_reset_stats(void);
  */
 void cnanolog_preallocate(void);
 
+/**
+ * Set CPU affinity for the background writer thread.
+ * Binds the writer thread to a specific CPU core for better cache locality
+ * and reduced thread migration overhead.
+ *
+ * IMPORTANT: Call this AFTER cnanolog_init() to bind the background thread.
+ *
+ * Benefits:
+ * - Improved cache locality (L1/L2/L3 caches stay warm)
+ * - Eliminates thread migration overhead (~1000-5000 cycles)
+ * - More predictable latency
+ * - Better for NUMA systems
+ *
+ * Platform notes:
+ * - Linux: Uses pthread_setaffinity_np() - direct core binding
+ * - macOS: Uses thread_policy_set() - affinity tags (best-effort)
+ * - Windows: Uses SetThreadAffinityMask() - direct core binding
+ *
+ * @param core_id CPU core ID (0-based, typically 0 to num_cores-1)
+ * @return 0 on success, -1 on failure
+ *
+ * Example:
+ *   cnanolog_init("app.clog");
+ *   cnanolog_set_writer_affinity(7);  // Pin to core 7 (isolated core)
+ */
+int cnanolog_set_writer_affinity(int core_id);
+
 /* ============================================================================
  * Log Levels
  * ============================================================================ */

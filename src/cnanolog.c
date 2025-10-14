@@ -10,9 +10,9 @@
 
 // --- Global State ---
 static ring_buffer_t g_ring_buffer;
-static mutex_t g_buffer_mutex;
-static cond_t g_buffer_cond;
-static thread_t g_writer_thread;
+static cnanolog_mutex_t g_buffer_mutex;
+static cnanolog_cond_t g_buffer_cond;
+static cnanolog_thread_t g_writer_thread;
 static FILE* g_log_file = NULL;
 static volatile int g_should_exit = 0;
 
@@ -28,10 +28,10 @@ int cnanolog_init(const char* log_file_path) {
     }
 
     rb_init(&g_ring_buffer);
-    mutex_init(&g_buffer_mutex);
-    cond_init(&g_buffer_cond);
+    cnanolog_mutex_init(&g_buffer_mutex);
+    cnanolog_cond_init(&g_buffer_cond);
 
-    if (thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
+    if (cnanolog_thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
         fclose(g_log_file);
         return -1;
     }
@@ -41,8 +41,8 @@ int cnanolog_init(const char* log_file_path) {
 
 void cnanolog_shutdown() {
     g_should_exit = 1;
-    cond_signal(&g_buffer_cond); // Wake up the writer thread to exit
-    thread_join(g_writer_thread, NULL);
+    cnanolog_cond_signal(&g_buffer_cond); // Wake up the writer thread to exit
+    cnanolog_thread_join(g_writer_thread, NULL);
 
     // Final flush
     char temp_buf[MAX_LOG_MSG_SIZE];
@@ -54,8 +54,8 @@ void cnanolog_shutdown() {
         fclose(g_log_file);
     }
 
-    mutex_destroy(&g_buffer_mutex);
-    cond_destroy(&g_buffer_cond);
+    cnanolog_mutex_destroy(&g_buffer_mutex);
+    cnanolog_cond_destroy(&g_buffer_cond);
 }
 
 void _cnanolog_log_internal(cnanolog_level_t level, const char* file, int line, const char* format, ...) {
@@ -89,14 +89,14 @@ void _cnanolog_log_internal(cnanolog_level_t level, const char* file, int line, 
                             level_str, file, line, temp_buf);
 
     // 3. Write to the ring buffer
-    mutex_lock(&g_buffer_mutex);
+    cnanolog_mutex_lock(&g_buffer_mutex);
     if (rb_write(&g_ring_buffer, final_buf, header_len) != 0) {
         // Optional: Handle buffer full case. For this MVP, we just drop the log.
     }
-    mutex_unlock(&g_buffer_mutex);
+    cnanolog_mutex_unlock(&g_buffer_mutex);
 
     // 4. Signal the writer thread
-    cond_signal(&g_buffer_cond);
+    cnanolog_cond_signal(&g_buffer_cond);
 }
 
 // --- Background Thread ---
@@ -106,19 +106,19 @@ static void* writer_thread_main(void* arg) {
     char temp_buf[MAX_LOG_MSG_SIZE];
 
     while (!g_should_exit) {
-        mutex_lock(&g_buffer_mutex);
+        cnanolog_mutex_lock(&g_buffer_mutex);
         while (!g_should_exit && g_ring_buffer.read_pos == g_ring_buffer.write_pos && !g_ring_buffer.is_full) {
-            cond_wait(&g_buffer_cond, &g_buffer_mutex);
+            cnanolog_cond_wait(&g_buffer_cond, &g_buffer_mutex);
         }
 
         // We were woken up. Read all available messages.
         while (rb_read(&g_ring_buffer, temp_buf, MAX_LOG_MSG_SIZE) > 0) {
             // Unlock while writing to the file to allow producers to log more messages.
-            mutex_unlock(&g_buffer_mutex);
+            cnanolog_mutex_unlock(&g_buffer_mutex);
             fputs(temp_buf, g_log_file);
-            mutex_lock(&g_buffer_mutex);
+            cnanolog_mutex_lock(&g_buffer_mutex);
         }
-        mutex_unlock(&g_buffer_mutex);
+        cnanolog_mutex_unlock(&g_buffer_mutex);
         fflush(g_log_file);
     }
 

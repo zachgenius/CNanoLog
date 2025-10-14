@@ -4,7 +4,17 @@ project(CNanoLog C)
 set(CMAKE_C_STANDARD 11)
 
 # Library
-add_library(cnanolog src/cnanolog.c src/platform.c src/ring_buffer.c)
+add_library(cnanolog
+    src/cnanolog.c
+    src/cnanolog_binary.c
+    src/platform.c
+    src/ring_buffer.c
+    src/binary_writer.c
+    src/compressor.c
+    src/log_registry.c
+    src/packer.c
+    src/staging_buffer.c
+)
 target_include_directories(cnanolog PUBLIC include)
 
 # Add platform-specific dependencies

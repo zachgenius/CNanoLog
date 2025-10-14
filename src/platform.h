@@ -47,29 +47,32 @@
 
 #ifdef PLATFORM_POSIX
     #include <pthread.h>
-    typedef pthread_t thread_t;
-    typedef pthread_mutex_t mutex_t;
-    typedef pthread_cond_t cond_t;
+    typedef pthread_t cnanolog_thread_t;
+    typedef pthread_mutex_t cnanolog_mutex_t;
+    typedef pthread_cond_t cnanolog_cond_t;
 #elif defined(PLATFORM_WINDOWS)
     #include <windows.h>
-    typedef HANDLE thread_t;
-    typedef CRITICAL_SECTION mutex_t;
-    typedef CONDITION_VARIABLE cond_t;
+    typedef HANDLE cnanolog_thread_t;
+    typedef CRITICAL_SECTION cnanolog_mutex_t;
+    typedef CONDITION_VARIABLE cnanolog_cond_t;
 #endif
 
 // Thread functions
-int thread_create(thread_t* thread, void* (*start_routine)(void*), void* arg);
-int thread_join(thread_t thread, void** retval);
+int cnanolog_thread_create(cnanolog_thread_t* thread, void* (*start_routine)(void*), void* arg);
+int cnanolog_thread_join(cnanolog_thread_t thread, void** retval);
 
 // Mutex functions
-int mutex_init(mutex_t* mutex);
-int mutex_lock(mutex_t* mutex);
-int mutex_unlock(mutex_t* mutex);
-void mutex_destroy(mutex_t* mutex);
+int cnanolog_mutex_init(cnanolog_mutex_t* mutex);
+int cnanolog_mutex_lock(cnanolog_mutex_t* mutex);
+int cnanolog_mutex_unlock(cnanolog_mutex_t* mutex);
+void cnanolog_mutex_destroy(cnanolog_mutex_t* mutex);
 
 // Condition variable functions
-int cond_init(cond_t* cond);
-int cond_wait(cond_t* cond, mutex_t* mutex);
-int cond_signal(cond_t* cond);
-void cond_destroy(cond_t* cond);
+int cnanolog_cond_init(cnanolog_cond_t* cond);
+int cnanolog_cond_wait(cnanolog_cond_t* cond, cnanolog_mutex_t* mutex);
+int cnanolog_cond_signal(cnanolog_cond_t* cond);
+void cnanolog_cond_destroy(cnanolog_cond_t* cond);
+
+// CPU affinity functions
+int cnanolog_thread_set_affinity(cnanolog_thread_t thread, int core_id);
 

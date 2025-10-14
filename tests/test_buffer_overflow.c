@@ -169,7 +169,7 @@ int test_concurrent_overflow(void) {
     cnanolog_get_stats(&stats_before);
 
     const int num_threads = 4;
-    thread_t threads[num_threads];
+    cnanolog_thread_t threads[num_threads];
     int thread_ids[num_threads];
 
     printf("  Creating %d threads to overflow buffer concurrently...\n", num_threads);
@@ -177,12 +177,12 @@ int test_concurrent_overflow(void) {
     /* Create threads */
     for (int i = 0; i < num_threads; i++) {
         thread_ids[i] = i;
-        thread_create(&threads[i], overflow_thread, &thread_ids[i]);
+        cnanolog_thread_create(&threads[i], overflow_thread, &thread_ids[i]);
     }
 
     /* Wait for completion */
     for (int i = 0; i < num_threads; i++) {
-        thread_join(threads[i], NULL);
+        cnanolog_thread_join(threads[i], NULL);
     }
 
     printf("  ✓ All threads completed\n");

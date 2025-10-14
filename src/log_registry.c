@@ -17,7 +17,7 @@ void log_registry_init(log_registry_t* registry) {
     registry->sites = (log_site_t*)calloc(INITIAL_CAPACITY, sizeof(log_site_t));
     registry->count = 0;
     registry->capacity = INITIAL_CAPACITY;
-    mutex_init(&registry->lock);
+    cnanolog_mutex_init(&registry->lock);
 }
 
 /* ============================================================================
@@ -72,18 +72,18 @@ uint32_t log_registry_register(log_registry_t* registry,
                                 const char* format,
                                 uint8_t num_args,
                                 const uint8_t* arg_types) {
-    mutex_lock(&registry->lock);
+    cnanolog_mutex_lock(&registry->lock);
 
     /* Check if this site already exists */
     uint32_t existing_id = find_existing_site(registry, filename, line_number, format);
     if (existing_id != UINT32_MAX) {
-        mutex_unlock(&registry->lock);
+        cnanolog_mutex_unlock(&registry->lock);
         return existing_id;
     }
 
     /* Grow if needed */
     if (grow_if_needed(registry) != 0) {
-        mutex_unlock(&registry->lock);
+        cnanolog_mutex_unlock(&registry->lock);
         return UINT32_MAX;  /* Failed to allocate */
     }
 
@@ -109,7 +109,7 @@ uint32_t log_registry_register(log_registry_t* registry,
 
     registry->count++;
 
-    mutex_unlock(&registry->lock);
+    cnanolog_mutex_unlock(&registry->lock);
     return new_id;
 }
 
@@ -146,5 +146,5 @@ void log_registry_destroy(log_registry_t* registry) {
     }
     registry->count = 0;
     registry->capacity = 0;
-    mutex_destroy(&registry->lock);
+    cnanolog_mutex_destroy(&registry->lock);
 }

@@ -272,19 +272,19 @@ void benchmark_multithreaded(int num_threads) {
 
     const int iterations_per_thread = 500000;
 
-    thread_t* threads = malloc(num_threads * sizeof(thread_t));
+    cnanolog_thread_t* threads = malloc(num_threads * sizeof(cnanolog_thread_t));
     thread_args_t* args = malloc(num_threads * sizeof(thread_args_t));
 
     /* Create threads */
     for (int i = 0; i < num_threads; i++) {
         args[i].thread_id = i;
         args[i].iterations = iterations_per_thread;
-        thread_create(&threads[i], worker_thread, &args[i]);
+        cnanolog_thread_create(&threads[i], worker_thread, &args[i]);
     }
 
     /* Wait for all threads */
     for (int i = 0; i < num_threads; i++) {
-        thread_join(threads[i], NULL);
+        cnanolog_thread_join(threads[i], NULL);
     }
 
     /* Calculate throughput */

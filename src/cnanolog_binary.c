@@ -36,7 +36,7 @@ static volatile int g_should_exit = 0;
 static int g_is_initialized = 0;
 
 /* Background writer thread */
-static thread_t g_writer_thread;
+static cnanolog_thread_t g_writer_thread;
 
 /* Timing for binary logs */
 static uint64_t g_start_timestamp = 0;
@@ -64,7 +64,7 @@ static struct {
 typedef struct {
     staging_buffer_t* buffers[MAX_STAGING_BUFFERS];
     size_t count;
-    mutex_t lock;  /* Only used during add (rare operation) */
+    cnanolog_mutex_t lock;  /* Only used during add (rare operation) */
 } buffer_registry_t;
 
 static buffer_registry_t g_buffer_registry;
@@ -175,11 +175,11 @@ int cnanolog_init(const char* log_file_path) {
     buffer_registry_init(&g_buffer_registry);
 
     /* Start background writer thread */
-    if (thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
+    if (cnanolog_thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
         fprintf(stderr, "cnanolog_init: Failed to create writer thread\n");
         binwriter_close(g_binary_writer, NULL, 0);
         log_registry_destroy(&g_registry);
-        mutex_destroy(&g_buffer_registry.lock);
+        cnanolog_mutex_destroy(&g_buffer_registry.lock);
         return -1;
     }
 
@@ -198,11 +198,11 @@ void cnanolog_shutdown(void) {
 
     /* Signal writer thread to exit */
     g_should_exit = 1;
-    thread_join(g_writer_thread, NULL);
+    cnanolog_thread_join(g_writer_thread, NULL);
 
     /* Final flush of all staging buffers */
     char temp_buf[MAX_LOG_ENTRY_SIZE];
-    mutex_lock(&g_buffer_registry.lock);
+    cnanolog_mutex_lock(&g_buffer_registry.lock);
     for (size_t i = 0; i < g_buffer_registry.count; i++) {
         staging_buffer_t* sb = g_buffer_registry.buffers[i];
 
@@ -226,7 +226,7 @@ void cnanolog_shutdown(void) {
         staging_buffer_destroy(sb);
     }
     g_buffer_registry.count = 0;
-    mutex_unlock(&g_buffer_registry.lock);
+    cnanolog_mutex_unlock(&g_buffer_registry.lock);
 
     /* Get all registered sites for dictionary */
     uint32_t num_sites = 0;
@@ -239,7 +239,7 @@ void cnanolog_shutdown(void) {
 
     /* Clean up */
     log_registry_destroy(&g_registry);
-    mutex_destroy(&g_buffer_registry.lock);
+    cnanolog_mutex_destroy(&g_buffer_registry.lock);
 
     g_is_initialized = 0;
 }
@@ -491,14 +491,14 @@ static void* writer_thread_main(void* arg) {
 static void buffer_registry_init(buffer_registry_t* registry) {
     memset(registry->buffers, 0, sizeof(registry->buffers));
     registry->count = 0;
-    mutex_init(&registry->lock);
+    cnanolog_mutex_init(&registry->lock);
 }
 
 static int buffer_registry_add(buffer_registry_t* registry, staging_buffer_t* buffer) {
-    mutex_lock(&registry->lock);
+    cnanolog_mutex_lock(&registry->lock);
 
     if (registry->count >= MAX_STAGING_BUFFERS) {
-        mutex_unlock(&registry->lock);
+        cnanolog_mutex_unlock(&registry->lock);
         return -1;  /* Registry full */
     }
 
@@ -506,7 +506,7 @@ static int buffer_registry_add(buffer_registry_t* registry, staging_buffer_t* bu
     registry->buffers[registry->count] = buffer;
     registry->count++;
 
-    mutex_unlock(&registry->lock);
+    cnanolog_mutex_unlock(&registry->lock);
     return 0;
 }
 
@@ -613,4 +613,31 @@ void cnanolog_preallocate(void) {
     /* Force allocation of thread-local buffer */
     staging_buffer_t* sb = get_or_create_staging_buffer();
     (void)sb;  /* Suppress unused warning */
+}
+
+/**
+ * Set CPU affinity for the background writer thread.
+ * See cnanolog.h for full documentation.
+ */
+int cnanolog_set_writer_affinity(int core_id) {
+    if (!g_is_initialized) {
+        fprintf(stderr, "cnanolog_set_writer_affinity: Logger not initialized\n");
+        return -1;
+    }
+
+    if (core_id < 0) {
+        fprintf(stderr, "cnanolog_set_writer_affinity: Invalid core ID %d\n", core_id);
+        return -1;
+    }
+
+    /* Call platform-specific affinity function */
+    int result = cnanolog_thread_set_affinity(g_writer_thread, core_id);
+
+    if (result == 0) {
+        /* Success - affinity set */
+        return 0;
+    } else {
+        /* Failed - warning already printed by platform layer */
+        return -1;
+    }
 }

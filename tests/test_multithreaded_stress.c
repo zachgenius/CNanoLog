@@ -63,7 +63,7 @@ int test_dynamic_threads(void) {
         printf("  Round %d/%d: Creating %d threads...\n",
                round + 1, NUM_ROUNDS, THREADS_PER_ROUND);
 
-        thread_t* threads = malloc(THREADS_PER_ROUND * sizeof(thread_t));
+        cnanolog_thread_t* threads = malloc(THREADS_PER_ROUND * sizeof(cnanolog_thread_t));
         thread_args_t* args = malloc(THREADS_PER_ROUND * sizeof(thread_args_t));
 
         /* Create threads */
@@ -73,7 +73,7 @@ int test_dynamic_threads(void) {
             args[i].iterations = LOGS_PER_THREAD;
             args[i].success = 0;
 
-            if (thread_create(&threads[i], aggressive_logger, &args[i]) != 0) {
+            if (cnanolog_thread_create(&threads[i], aggressive_logger, &args[i]) != 0) {
                 fprintf(stderr, "Failed to create thread %d\n", i);
                 free(threads);
                 free(args);
@@ -83,7 +83,7 @@ int test_dynamic_threads(void) {
 
         /* Wait for all threads to complete */
         for (int i = 0; i < THREADS_PER_ROUND; i++) {
-            thread_join(threads[i], NULL);
+            cnanolog_thread_join(threads[i], NULL);
 
             if (!args[i].success) {
                 fprintf(stderr, "Thread %d failed\n", i);
@@ -153,7 +153,7 @@ int test_burst_logging(void) {
     cnanolog_get_stats(&stats_before);
 
     const int num_threads = 4;
-    thread_t threads[num_threads];
+    cnanolog_thread_t threads[num_threads];
     int thread_ids[num_threads];
 
     /* Create burst logging threads */
@@ -161,12 +161,12 @@ int test_burst_logging(void) {
 
     for (int i = 0; i < num_threads; i++) {
         thread_ids[i] = i;
-        thread_create(&threads[i], burst_logger, &thread_ids[i]);
+        cnanolog_thread_create(&threads[i], burst_logger, &thread_ids[i]);
     }
 
     /* Wait for completion */
     for (int i = 0; i < num_threads; i++) {
-        thread_join(threads[i], NULL);
+        cnanolog_thread_join(threads[i], NULL);
     }
 
     printf("  ✓ All burst threads completed\n");
@@ -209,18 +209,18 @@ int test_mixed_argument_types(void) {
     printf("---------------------------------------------\n");
 
     const int num_threads = 6;
-    thread_t threads[num_threads];
+    cnanolog_thread_t threads[num_threads];
     int thread_ids[num_threads];
 
     printf("  Creating %d threads with mixed arg types...\n", num_threads);
 
     for (int i = 0; i < num_threads; i++) {
         thread_ids[i] = i;
-        thread_create(&threads[i], mixed_args_logger, &thread_ids[i]);
+        cnanolog_thread_create(&threads[i], mixed_args_logger, &thread_ids[i]);
     }
 
     for (int i = 0; i < num_threads; i++) {
-        thread_join(threads[i], NULL);
+        cnanolog_thread_join(threads[i], NULL);
     }
 
     printf("  ✓ All threads completed\n");

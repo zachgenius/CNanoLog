@@ -47,7 +47,7 @@ typedef struct {
     log_site_t* sites;       /* Array of registered sites */
     uint32_t count;          /* Number of registered sites */
     uint32_t capacity;       /* Allocated capacity */
-    mutex_t lock;            /* Protects concurrent registration */
+    cnanolog_mutex_t lock;   /* Protects concurrent registration */
 } log_registry_t;
 
 /* ============================================================================

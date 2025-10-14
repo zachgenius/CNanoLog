@@ -1,9 +1,14 @@
 cmake_minimum_required(VERSION 3.10)
-project(CNanoLog VERSION 1.0.0 LANGUAGES C)
+
+# Read version from VERSION file
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" CNANOLOG_VERSION)
+string(STRIP "${CNANOLOG_VERSION}" CNANOLOG_VERSION)
+
+project(CNanoLog VERSION ${CNANOLOG_VERSION} LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 
-# Library
+# Library - can be built as STATIC or SHARED
 add_library(cnanolog
     src/cnanolog.c
     src/cnanolog_binary.c
@@ -15,6 +20,14 @@ add_library(cnanolog
     src/packer.c
     src/staging_buffer.c
 )
+
+# Support building as shared library
+if(BUILD_SHARED_LIBS)
+    set_target_properties(cnanolog PROPERTIES
+        C_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+    )
+endif()
 
 # Set library properties
 set_target_properties(cnanolog PROPERTIES

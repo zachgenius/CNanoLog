@@ -254,10 +254,11 @@ gcc myapp.c cnanolog_binary.c binary_writer.c log_registry.c \
     staging_buffer.c background_thread.c -o myapp
 ```
 
-**Option 3: vcpkg Package Manager**
+**Option 3: Package Managers (vcpkg / Conan)**
 
-CNanoLog supports vcpkg for easy cross-platform installation:
+CNanoLog supports both vcpkg and Conan for easy cross-platform installation:
 
+**vcpkg:**
 ```bash
 # Install via vcpkg (once published)
 vcpkg install cnanolog
@@ -267,7 +268,23 @@ find_package(CNanoLog CONFIG REQUIRED)
 target_link_libraries(myapp PRIVATE CNanoLog::cnanolog)
 ```
 
-For detailed vcpkg integration instructions, see [VCPKG.md](docs/VCPKG.md).
+**Conan:**
+```bash
+# Install via Conan (once published)
+conan install --requires=cnanolog/1.0.0
+
+# conanfile.txt
+[requires]
+cnanolog/1.0.0
+
+[generators]
+CMakeDeps
+CMakeToolchain
+```
+
+For detailed integration instructions:
+- **vcpkg**: See [VCPKG.md](VCPKG.md)
+- **Conan**: See [CONAN.md](docs/CONAN.md)
 
 ## Architecture
 

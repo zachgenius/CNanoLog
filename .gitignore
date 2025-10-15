@@ -55,7 +55,7 @@ dkms.conf
 *.dwo
 # CMake build files
 build/
-cbake-build-*/
+cmake-build-*/
 
 # IDE files
 .idea/

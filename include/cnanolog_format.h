@@ -13,6 +13,13 @@
 extern "C" {
 #endif
 
+/* Compatibility macro for static assertions */
+#ifdef __cplusplus
+    #define CNANOLOG_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
+#else
+    #define CNANOLOG_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
+#endif
+
 /* ============================================================================
  * Magic Numbers and Version
  * ============================================================================ */
@@ -68,8 +75,8 @@ typedef struct {
 } __attribute__((packed)) cnanolog_file_header_t;
 
 /* Compile-time size check */
-_Static_assert(sizeof(cnanolog_file_header_t) == 64,
-               "File header must be exactly 64 bytes");
+CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_file_header_t) == 64,
+                       "File header must be exactly 64 bytes");
 
 /* ============================================================================
  * Log Entry Header (14 bytes)
@@ -86,8 +93,8 @@ typedef struct {
 } __attribute__((packed)) cnanolog_entry_header_t;
 
 /* Compile-time size check */
-_Static_assert(sizeof(cnanolog_entry_header_t) == 14,
-               "Entry header must be exactly 14 bytes");
+CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_entry_header_t) == 14,
+                       "Entry header must be exactly 14 bytes");
 
 /* ============================================================================
  * Dictionary Header (16 bytes)
@@ -105,8 +112,8 @@ typedef struct {
 } __attribute__((packed)) cnanolog_dict_header_t;
 
 /* Compile-time size check */
-_Static_assert(sizeof(cnanolog_dict_header_t) == 16,
-               "Dictionary header must be exactly 16 bytes");
+CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_dict_header_t) == 16,
+                       "Dictionary header must be exactly 16 bytes");
 
 /* ============================================================================
  * Dictionary Entry (30 bytes + variable strings)
@@ -129,8 +136,8 @@ typedef struct {
 } __attribute__((packed)) cnanolog_dict_entry_t;
 
 /* Compile-time size check */
-_Static_assert(sizeof(cnanolog_dict_entry_t) == 30,
-               "Dictionary entry must be exactly 30 bytes");
+CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_dict_entry_t) == 30,
+                       "Dictionary entry must be exactly 30 bytes");
 
 /* ============================================================================
  * Helper Macros

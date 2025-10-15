@@ -56,5 +56,21 @@ foreach(TEST_NAME ${TESTS})
     endif()
 endforeach()
 
+# C++ integration test (separate because it's .cpp not .c)
+add_executable(test_cpp_integration test_cpp_integration.cpp)
+target_link_libraries(test_cpp_integration cnanolog)
+target_include_directories(test_cpp_integration PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src
+)
+if(UNIX AND NOT APPLE)
+    target_link_libraries(test_cpp_integration pthread)
+endif()
+if(APPLE)
+    target_link_libraries(test_cpp_integration "-pthread")
+endif()
+add_test(NAME test_cpp_integration COMMAND test_cpp_integration)
+
 # Print message about tests
 message(STATUS "Building tests: ${TESTS}")
+message(STATUS "Building C++ integration test: test_cpp_integration")

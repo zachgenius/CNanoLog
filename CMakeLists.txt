@@ -4,9 +4,10 @@ cmake_minimum_required(VERSION 3.10)
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" CNANOLOG_VERSION)
 string(STRIP "${CNANOLOG_VERSION}" CNANOLOG_VERSION)
 
-project(CNanoLog VERSION ${CNANOLOG_VERSION} LANGUAGES C)
+project(CNanoLog VERSION ${CNANOLOG_VERSION} LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)
 
 # ============================================================================
 # Build Type and Optimization Flags

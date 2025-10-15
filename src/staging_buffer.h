@@ -15,6 +15,13 @@
 extern "C" {
 #endif
 
+/* Compatibility macro for static assertions */
+#ifdef __cplusplus
+    #define CNANOLOG_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
+#else
+    #define CNANOLOG_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
+#endif
+
 /* ============================================================================
  * Configuration
  * ============================================================================ */
@@ -85,8 +92,8 @@ typedef struct ALIGN_CACHELINE {
 } staging_buffer_t;
 
 /* Compile-time verification of cache-line alignment */
-_Static_assert(sizeof(staging_buffer_t) % CACHE_LINE_SIZE == 0,
-               "staging_buffer_t size must be multiple of cache line size");
+CNANOLOG_STATIC_ASSERT(sizeof(staging_buffer_t) % CACHE_LINE_SIZE == 0,
+                       "staging_buffer_t size must be multiple of cache line size");
 
 /* ============================================================================
  * Lifecycle

@@ -4,13 +4,13 @@
 # Decompressor executable
 add_executable(decompressor
     decompressor.c
-    ${CMAKE_SOURCE_DIR}/src/packer.c
+    ${PROJECT_SOURCE_DIR}/src/packer.c
 )
 
 # Include directories
 target_include_directories(decompressor PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 # Install decompressor

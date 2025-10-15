@@ -33,8 +33,8 @@ foreach(TEST_NAME ${TESTS})
 
     # Include directories
     target_include_directories(${TEST_NAME} PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
     )
 
     # Platform-specific threading libraries

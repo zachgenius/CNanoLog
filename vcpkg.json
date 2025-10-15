@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "cnanolog",
-  "version-string": "1.0.0",
+  "version-string": "1.0.2",
   "description": "Ultra-fast, low-latency binary logging library for C11 with nanosecond precision and lock-free performance",
   "homepage": "https://github.com/zachgenius/CNanoLog",
   "license": "MIT",

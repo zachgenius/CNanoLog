@@ -180,9 +180,22 @@ export(EXPORT CNanoLogTargets
 # Register package in user's package registry (optional)
 export(PACKAGE CNanoLog)
 
+# ============================================================================
+# Single-Header Generation Target
+# ============================================================================
+
+add_custom_target(single-header
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_single_header.sh
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Generating single-header version: cnanolog.h"
+    VERBATIM
+)
+
 # Print installation summary
 message(STATUS "CNanoLog ${PROJECT_VERSION} configuration:")
 message(STATUS "  Install prefix: ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "  Library dir:    ${CMAKE_INSTALL_LIBDIR}")
 message(STATUS "  Include dir:    ${CMAKE_INSTALL_INCLUDEDIR}")
 message(STATUS "  CMake dir:      ${CONFIG_INSTALL_DIR}")
+message(STATUS "")
+message(STATUS "To generate single-header file: make single-header")

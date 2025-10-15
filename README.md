@@ -233,7 +233,32 @@ make test
 
 ### Integration Options
 
-**Option 1: Compiled Library**
+**Option 1: Single-Header File (Easiest)**
+```bash
+# Generate single-header file
+cd CNanoLog
+make single-header  # or run: ./tools/generate_single_header.sh
+
+# Copy the generated cnanolog.h to your project
+cp cnanolog.h your_project/
+```
+
+Then in your code:
+```c
+// In ONE .c file, define the implementation:
+#define CNANOLOG_IMPLEMENTATION
+#include "cnanolog.h"
+
+// In all other files, just include normally:
+#include "cnanolog.h"
+```
+
+Compile with:
+```bash
+gcc -std=c11 -pthread myapp.c -o myapp
+```
+
+**Option 2: Compiled Library**
 ```bash
 # Build and install
 cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
@@ -244,7 +269,7 @@ sudo make install
 gcc myapp.c -lcnanolog -o myapp
 ```
 
-**Option 2: Source Integration**
+**Option 3: Source Integration**
 ```bash
 # Copy source files into your project
 cp -r src include your_project/
@@ -254,7 +279,7 @@ gcc myapp.c cnanolog_binary.c binary_writer.c log_registry.c \
     staging_buffer.c background_thread.c -o myapp
 ```
 
-**Option 3: Package Managers (vcpkg / Conan)**
+**Option 4: Package Managers (vcpkg / Conan)**
 
 CNanoLog supports both vcpkg and Conan for easy cross-platform installation:
 
@@ -581,7 +606,7 @@ if (stats.total_bytes_written > 1GB) {
 - [x] Phase 8: Add cpu affinity support
 
 ### Future Enhancements
-- [ ] Single-header version for easy integration
+- [x] Single-header version for easy integration
 - [ ] Burst scenario optimizations (Latency spikes)
 - [ ] Benchmarking suite for performance regression
 - [ ] Plan text logging mode (human-readable without decompressor)

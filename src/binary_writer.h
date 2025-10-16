@@ -21,8 +21,19 @@ extern "C" {
  * Configuration
  * ============================================================================ */
 
-/* Size of internal write buffer (should be 64KB or larger for good performance) */
-#define BINARY_WRITER_BUFFER_SIZE (64 * 1024)
+/**
+ * Size of internal write buffer.
+ *
+ * Larger buffers reduce flush frequency and improve tail latency:
+ * - 64KB:  Good for memory-constrained systems (more frequent flushes)
+ * - 512KB: Balanced (recommended for most use cases)
+ * - 4MB:   Better tail latency (fewer aio_write() calls)
+ * - 16MB:  Best tail latency (matches high-performance systems)
+ *
+ * Trade-off: Memory usage = BINARY_WRITER_BUFFER_SIZE * 2 (double buffering)
+ * NanoLog uses 64MB buffer and achieves p99.9 = 702ns
+ */
+#define BINARY_WRITER_BUFFER_SIZE (4 * 1024 * 1024)  // 4MB (8MB total with double buffer)
 
 /**
  * Periodic flush interval (flush count).

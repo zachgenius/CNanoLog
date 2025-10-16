@@ -608,7 +608,7 @@ if (stats.total_bytes_written > 1GB) {
 ### Future Enhancements
 - [x] Single-header version for easy integration
 - [ ] Burst scenario optimizations (Latency spikes)
-- [ ] Benchmarking suite for performance regression
+- [X] Benchmarking suite for performance regression (ref: [benchmark](https://github.com/zachgenius/cnanolog_benchmark))
 - [ ] Plan text logging mode (human-readable without decompressor)
 - [ ] Log rotation (size/time-based)
 - [ ] Multiple log outputs (file + network)

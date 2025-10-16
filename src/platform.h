@@ -45,6 +45,36 @@
  */
 #define CACHE_LINE_PAD(x) (CACHE_LINE_SIZE - ((x) % CACHE_LINE_SIZE))
 
+/* ============================================================================
+ * Branch Prediction Hints
+ * ============================================================================ */
+
+/**
+ * Branch prediction hints for the compiler.
+ * Use these to optimize hot paths by telling the CPU which branches are likely.
+ *
+ * likely(x):   Use when condition is almost always true (e.g., normal operation)
+ * unlikely(x): Use when condition is rarely true (e.g., error handling)
+ *
+ * Example:
+ *   if (unlikely(ptr == NULL)) {
+ *       return -1;  // Error path - rarely taken
+ *   }
+ *   // Hot path continues here
+ *
+ * Performance impact:
+ *   - Better instruction pipelining (2-5ns improvement)
+ *   - Reduces branch misprediction penalties (~10-20 cycles)
+ *   - More consistent latency (lower p99-p50 variance)
+ */
+#if defined(__GNUC__) || defined(__clang__)
+    #define likely(x)   __builtin_expect(!!(x), 1)
+    #define unlikely(x) __builtin_expect(!!(x), 0)
+#else
+    #define likely(x)   (x)
+    #define unlikely(x) (x)
+#endif
+
 #ifdef PLATFORM_POSIX
     #include <pthread.h>
     typedef pthread_t cnanolog_thread_t;

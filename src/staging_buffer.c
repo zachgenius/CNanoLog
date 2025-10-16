@@ -89,8 +89,14 @@ char* staging_reserve(staging_buffer_t* sb, size_t nbytes) {
         /* Check space available from beginning (0 to read_pos) */
         size_t space_at_beginning = sb->read_pos;
 
-        /* Need space for wrap marker + requested allocation */
-        if (space_at_beginning > nbytes && available >= sizeof(cnanolog_entry_header_t)) {
+        /*
+         * Wrap-around conditions:
+         * 1. Enough space at beginning for requested allocation (with safety margin)
+         * 2. Enough space at end to write full wrap marker header
+         *    (Critical: must not overflow buffer!)
+         */
+        if (space_at_beginning > (nbytes + 64) &&  /* 64-byte safety margin */
+            available >= sizeof(cnanolog_entry_header_t)) {
             /*
              * Wrap around is possible!
              *
@@ -107,14 +113,23 @@ char* staging_reserve(staging_buffer_t* sb, size_t nbytes) {
             wrap_marker->timestamp = 0;
 #endif
 
-            /* Step 2: Advance write_pos past wrap marker */
-            sb->write_pos += sizeof(cnanolog_entry_header_t);
+            /* Step 2: Calculate end position of wrap marker */
+            size_t wrap_marker_end = sb->write_pos + sizeof(cnanolog_entry_header_t);
+
+            /* Verify wrap marker doesn't overflow buffer */
+            if (wrap_marker_end > STAGING_BUFFER_SIZE) {
+                /* Not enough space for wrap marker - cannot wrap */
+                return NULL;
+            }
 
             /* Step 3: Memory fence to ensure wrap marker is written */
             memory_fence_release();
 
-            /* Step 4: Commit wrap marker (make visible to consumer) */
-            sb->committed = sb->write_pos;
+            /*
+             * Step 4: Commit wrap marker.
+             * This makes the wrap marker visible to consumer before we wrap.
+             */
+            sb->committed = wrap_marker_end;
 
             /* Step 5: Wrap write_pos to beginning */
             sb->write_pos = 0;
@@ -188,13 +203,19 @@ size_t staging_available(const staging_buffer_t* sb) {
     /* Ensure we see the latest committed value */
     memory_fence_acquire();
 
-    /* Available bytes = committed - read_pos */
     if (sb->committed >= sb->read_pos) {
+        /* Normal case: committed is ahead of read_pos */
         return sb->committed - sb->read_pos;
+    } else {
+        /*
+         * Wrap-around case: committed < read_pos
+         * This means the producer wrapped to the beginning.
+         * Consumer should read from read_pos to end of buffer first,
+         * where it will find a wrap marker and wrap read_pos to 0.
+         * After wrapping, it can then read from 0 to committed.
+         */
+        return STAGING_BUFFER_SIZE - sb->read_pos;
     }
-
-    /* This should never happen in correct usage */
-    return 0;
 }
 
 size_t staging_read(staging_buffer_t* sb, char* out, size_t max_len) {

@@ -262,8 +262,18 @@ void cnanolog_shutdown(void) {
             size_t nread = staging_read(sb, temp_buf, MAX_LOG_ENTRY_SIZE);
             if (nread == 0) break;
 
-            /* Parse and write entry */
+            /* Parse entry header */
             cnanolog_entry_header_t* header = (cnanolog_entry_header_t*)temp_buf;
+
+            /* Check for wrap marker (circular buffer wrap-around) */
+            if (header->log_id == STAGING_WRAP_MARKER_LOG_ID) {
+                /* This is a wrap marker - skip it and wrap read position */
+                staging_consume(sb, sizeof(cnanolog_entry_header_t));
+                staging_wrap_read_pos(sb);
+                continue;  /* Continue processing from beginning */
+            }
+
+            /* Write real log entry */
             binwriter_write_entry(g_binary_writer,
                                 header->log_id,
 #ifndef CNANOLOG_NO_TIMESTAMPS

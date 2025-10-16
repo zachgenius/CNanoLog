@@ -24,7 +24,7 @@ struct binary_writer {
     uint32_t entries_written;   /* Number of log entries written */
     uint64_t bytes_written;     /* Total bytes written to disk */
     uint64_t header_offset;     /* File offset of header (always 0) */
-    time_t last_fflush_time;    /* Timestamp of last fflush() call */
+    uint32_t flush_counter;     /* Counter for periodic fflush() */
 };
 
 /* ============================================================================
@@ -152,7 +152,7 @@ binary_writer_t* binwriter_create(const char* path) {
     writer->entries_written = 0;
     writer->bytes_written = 0;
     writer->header_offset = 0;
-    writer->last_fflush_time = time(NULL);
+    writer->flush_counter = 0;
 
     return writer;
 }
@@ -264,32 +264,32 @@ int binwriter_flush(binary_writer_t* writer) {
      * Problem:
      * - fflush() on every flush: Blocks for 1-5ms → p99.9 = 2808ns (bad tail latency)
      * - No fflush() at all: p99.9 = 216ns (excellent) but data lost on crash (unacceptable)
+     * - time() syscall on every flush: ~200-500ns overhead → p99.9 = 3560-4400ns (bad!)
      *
-     * Solution: Periodic fflush() at configurable intervals
-     * - During bursts: No fflush() → excellent tail latency (216-648ns p99.9)
-     * - Periodically: fflush() once per BINARY_WRITER_PERIODIC_FLUSH_INTERVAL_SEC
+     * Solution: Periodic fflush() based on flush count (not time)
+     * - During bursts: No fflush() → excellent tail latency
+     * - No syscalls: Counter is pure CPU → zero overhead
+     * - Periodically: fflush() once every N buffer flushes
      * - On shutdown: fsync() in binwriter_close() → guaranteed durability
      *
      * Trade-off:
-     * - Max data at risk: Last BINARY_WRITER_PERIODIC_FLUSH_INTERVAL_SEC seconds
-     * - Default: 5 seconds (configurable in binary_writer.h)
-     * - Performance: Maintains low tail latency during bursts
+     * - Max data at risk: BINARY_WRITER_PERIODIC_FLUSH_COUNT * 64KB
+     * - Default: 100 flushes = 6.4MB at risk (configurable in binary_writer.h)
+     * - Performance: Zero overhead during bursts, maintains low tail latency
      * - Durability: Regular checkpoints prevent catastrophic loss
      *
-     * For comparison (with 5-second periodic flush):
-     * - CNanoLog with fflush every batch: p99.9 = 2808ns
-     * - CNanoLog with no fflush: p99.9 = 216ns (but data loss on crash)
-     * - CNanoLog with periodic fflush: p99.9 = 216-648ns (excellent tail latency)
-     *   + max 5 seconds of logs at risk (acceptable trade-off)
+     * Key insight: Using flush count instead of time() avoids syscall overhead.
+     * This is why small messages (more frequent flushes) had worse tail latency
+     * with time-based checking (3560-4400ns) vs large messages (280-320ns).
      */
-#if BINARY_WRITER_PERIODIC_FLUSH_INTERVAL_SEC > 0
-    time_t now = time(NULL);
-    if (now - writer->last_fflush_time >= BINARY_WRITER_PERIODIC_FLUSH_INTERVAL_SEC) {
+#if BINARY_WRITER_PERIODIC_FLUSH_COUNT > 0
+    writer->flush_counter++;
+    if (writer->flush_counter >= BINARY_WRITER_PERIODIC_FLUSH_COUNT) {
         if (fflush(writer->fp) != 0) {
             fprintf(stderr, "binwriter_flush: periodic fflush failed: %s\n", strerror(errno));
             return -1;
         }
-        writer->last_fflush_time = now;
+        writer->flush_counter = 0;
     }
 #endif
 

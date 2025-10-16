@@ -25,22 +25,29 @@ extern "C" {
 #define BINARY_WRITER_BUFFER_SIZE (64 * 1024)
 
 /**
- * Periodic flush interval (seconds).
+ * Periodic flush interval (flush count).
  *
- * The binary writer will call fflush() at most once per this interval to ensure
+ * The binary writer will call fflush() once every N buffer flushes to ensure
  * data durability while maintaining high performance during bursts.
  *
  * Setting this to 0 disables periodic flushing (maximum performance, but data
  * may be lost on crash). Setting it higher reduces I/O blocking but increases
  * the amount of data at risk.
  *
+ * Calculation:
+ * - Buffer size = 64KB per flush
+ * - Flush every N flushes = N * 64KB of data at risk
+ * - Example: 100 flushes = 6.4MB at risk
+ *
  * Recommended values:
  * - 0: Maximum performance, no durability (not recommended for production)
- * - 1-2: Good for critical systems (max 1-2 seconds of logs at risk)
- * - 5-10: Good balance for most systems (max 5-10 seconds at risk)
- * - 30+: For systems where performance is more critical than durability
+ * - 10-50: Aggressive flushing, ~640KB-3.2MB at risk
+ * - 100-200: Good balance, ~6.4MB-12.8MB at risk (default)
+ * - 500+: Maximum performance, more data at risk
+ *
+ * Note: Using flush count instead of time avoids time() syscalls in hot path.
  */
-#define BINARY_WRITER_PERIODIC_FLUSH_INTERVAL_SEC 5
+#define BINARY_WRITER_PERIODIC_FLUSH_COUNT 100
 
 /* ============================================================================
  * Types

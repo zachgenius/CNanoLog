@@ -13,7 +13,7 @@ CNanoLog is a high-performance logging library inspired by [NanoLog](https://git
 ### Ultra-Low Latency
 - **Sub-20ns hot-path** logging with compile-time format string extraction
 - **Lock-free producer threads** using thread-local staging buffers
-- **RDTSC-based timestamps** for 5-10ns timestamp overhead
+- **Optional RDTSC timestamps** - disable for extreme performance mode
 - **Preallocate API** to eliminate first-log allocation overhead
 
 (Note: Actual latency may vary based on platform and workload)
@@ -22,7 +22,7 @@ CNanoLog is a high-performance logging library inspired by [NanoLog](https://git
 - **Compact binary encoding** with variable-byte integer compression
 - **Deferred formatting** - format strings stored in dictionary, not in log stream
 - **Efficient decompression** tool to convert binary logs to human-readable text
-- **Nanosecond-precision timestamps** using high-resolution CPU counters
+- **Optional nanosecond-precision timestamps** using high-resolution CPU counters (can be disabled at compile-time)
 
 ### Thread Safety
 - **Lock-free fast path** for producer threads
@@ -220,8 +220,12 @@ cd CNanoLog
 # Create build directory
 mkdir build && cd build
 
-# Configure and build
+# Configure and build (default: with timestamps)
 cmake ..
+make
+
+# Or build in extreme performance mode (no timestamps)
+cmake -DCNANOLOG_ENABLE_TIMESTAMPS=OFF ..
 make
 
 # Run tests
@@ -230,6 +234,11 @@ make test
 # Run benchmarks
 ./benchmark_latency
 ```
+
+**CMake Options:**
+- `CNANOLOG_ENABLE_TIMESTAMPS` - Enable/disable high-resolution timestamps (default: ON)
+- `BUILD_EXAMPLES` - Build example programs (default: ON)
+- `BUILD_TESTS` - Build test suite (default: ON)
 
 ### Integration Options
 
@@ -454,6 +463,29 @@ int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
 cnanolog_set_writer_affinity(num_cores - 1);  // Pin to last core
 ```
 
+### Extreme Performance Mode (No Timestamps)
+
+For maximum throughput when timestamps aren't needed:
+
+**Benefits:**
+- ~43% smaller log entries (14 → 6 bytes)
+- Eliminates rdtsc() overhead (~5-10ns per log)
+- More logs fit in staging buffers
+- Faster initialization (no calibration)
+
+**When to use:**
+- High-frequency logging where timing isn't critical
+- Event counting/aggregation scenarios
+- Memory-constrained embedded systems
+- Maximum throughput benchmarking
+
+**Build command:**
+```bash
+cmake -DCNANOLOG_ENABLE_TIMESTAMPS=OFF ..
+make
+```
+
+The decompressor automatically handles both timestamp and no-timestamp log files.
 
 ## Testing
 
@@ -497,13 +529,38 @@ make test
 
 ### Compile-Time Options
 
+**Timestamp Control (Extreme Performance Mode)**
+
+Disable timestamps for maximum throughput when you don't need precise timing:
+
+```bash
+# Build without timestamps (extreme performance mode)
+cmake -DCNANOLOG_ENABLE_TIMESTAMPS=OFF ..
+make
+
+# Build with timestamps (default - high-resolution rdtsc)
+cmake -DCNANOLOG_ENABLE_TIMESTAMPS=ON ..
+make
+```
+
+Benefits of disabling timestamps:
+- **~43% smaller log entries** (14 bytes → 6 bytes per entry header)
+- **No rdtsc() overhead** (~5-10ns saved per log)
+- **Faster startup** (skips 100ms timestamp calibration)
+- **More logs fit in buffers** (less memory pressure)
+
+The decompressor automatically detects whether the log file has timestamps.
+
+**Buffer Size Tuning**
+
 ```c
 // src/staging_buffer.h
-#define STAGING_BUFFER_SIZE (16 * 1024)  // 16 KB per thread
+#define STAGING_BUFFER_SIZE (8 * 1024 * 1024)  // 8 MB per thread (default)
 
 // Adjust based on your workload:
-// - High burst: Increase to 32KB or 64KB
-// - Memory constrained: Decrease to 8KB
+// - High burst scenarios: Increase to 16MB or 32MB
+// - Many threads, memory constrained: Decrease to 4MB or 1MB
+// - Steady logging: 8MB is optimal
 ```
 
 ### Runtime Options
@@ -604,18 +661,18 @@ if (stats.total_bytes_written > 1GB) {
 - [x] Phase 6: Optimization & polishing
 - [x] Phase 7: Testing & validation
 - [x] Phase 8: Add cpu affinity support
+- [x] Single-header version for easy integration
+- [X] Benchmarking suite for performance regression (ref: [benchmark](https://github.com/zachgenius/cnanolog_benchmark))
+- [X] Switching extreme mode (by removing timestamps) for max throughput configured at compile-time
 
 ### Future Enhancements
-- [x] Single-header version for easy integration
 - [ ] Burst scenario optimizations (Latency spikes)
-- [X] Benchmarking suite for performance regression (ref: [benchmark](https://github.com/zachgenius/cnanolog_benchmark))
 - [ ] Plan text logging mode (human-readable without decompressor)
 - [ ] Log rotation (size/time-based)
 - [ ] Multiple log outputs (file + network)
 - [ ] Log filtering by level or category
 - [ ] Blocking mode (alternative to drop policy)
 - [ ] Async flush control
-- [ ] Language bindings (Python, Rust)
 - [ ] Windows-specific optimizations
 - [ ] Custom compression algorithms
 

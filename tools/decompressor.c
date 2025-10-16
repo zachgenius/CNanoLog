@@ -35,6 +35,7 @@ typedef struct {
     uint64_t start_timestamp;
     time_t start_time_sec;
     int32_t start_time_nsec;
+    int has_timestamps;  /* Flag: 1 if file contains timestamps, 0 otherwise */
 } decompressor_ctx_t;
 
 /* ============================================================================
@@ -564,6 +565,9 @@ static int decompress_file(const char* input_path, FILE* output_fp) {
     ctx.start_time_sec = header.start_time_sec;
     ctx.start_time_nsec = header.start_time_nsec;
 
+    /* Check if file has timestamps */
+    ctx.has_timestamps = (header.flags & CNANOLOG_FLAG_HAS_TIMESTAMPS) != 0;
+
     /* Determine dictionary offset */
     uint64_t dict_offset;
     if (header.dictionary_offset == 0) {
@@ -592,43 +596,64 @@ static int decompress_file(const char* input_path, FILE* output_fp) {
     char uncompressed_buffer[CNANOLOG_MAX_ENTRY_SIZE];
 
     while (entries_processed < header.entry_count) {
-        /* Read entry header */
-        cnanolog_entry_header_t entry;
-        size_t read = fread(&entry, 1, sizeof(entry), input_fp);
-        if (read == 0) break; /* EOF */
-        if (read != sizeof(entry)) {
-            fprintf(stderr, "Error: Failed to read entry header\n");
+        /* Read entry header - format depends on whether timestamps are enabled */
+        uint32_t log_id;
+        uint64_t timestamp = 0;
+        uint16_t data_length;
+
+        /* Read log_id (always 4 bytes) */
+        if (fread(&log_id, 1, sizeof(log_id), input_fp) != sizeof(log_id)) {
+            if (feof(input_fp)) break;  /* EOF */
+            fprintf(stderr, "Error: Failed to read entry log_id\n");
+            goto cleanup;
+        }
+
+        /* Read timestamp (8 bytes) if enabled */
+        if (ctx.has_timestamps) {
+            if (fread(&timestamp, 1, sizeof(timestamp), input_fp) != sizeof(timestamp)) {
+                fprintf(stderr, "Error: Failed to read entry timestamp\n");
+                goto cleanup;
+            }
+        }
+
+        /* Read data_length (always 2 bytes) */
+        if (fread(&data_length, 1, sizeof(data_length), input_fp) != sizeof(data_length)) {
+            fprintf(stderr, "Error: Failed to read entry data_length\n");
             goto cleanup;
         }
 
         /* Validate log_id */
-        if (entry.log_id >= ctx.num_entries) {
+        if (log_id >= ctx.num_entries) {
             fprintf(stderr, "Error: Invalid log_id %u (max %u)\n",
-                    entry.log_id, ctx.num_entries - 1);
+                    log_id, ctx.num_entries - 1);
             goto cleanup;
         }
 
         /* Read argument data (compressed) */
-        if (entry.data_length > 0) {
-            if (fread(arg_buffer, 1, entry.data_length, input_fp) != entry.data_length) {
+        if (data_length > 0) {
+            if (fread(arg_buffer, 1, data_length, input_fp) != data_length) {
                 fprintf(stderr, "Error: Failed to read entry data\n");
                 goto cleanup;
             }
         }
 
-        /* Format timestamp */
+        /* Format timestamp (if present) */
         char timestamp_str[64];
-        format_timestamp(&ctx, entry.timestamp, timestamp_str, sizeof(timestamp_str));
+        if (ctx.has_timestamps) {
+            format_timestamp(&ctx, timestamp, timestamp_str, sizeof(timestamp_str));
+        } else {
+            snprintf(timestamp_str, sizeof(timestamp_str), "NO-TIMESTAMP");
+        }
 
         /* Get dictionary entry */
-        dict_entry_t* dict = &ctx.entries[entry.log_id];
+        dict_entry_t* dict = &ctx.entries[log_id];
 
         /* Decompress argument data */
         const char* data_to_format = arg_buffer;
-        if (entry.data_length > 0) {
+        if (data_length > 0) {
             int decompressed_len = decompress_entry_args(
                 arg_buffer,
-                entry.data_length,
+                data_length,
                 uncompressed_buffer,
                 sizeof(uncompressed_buffer),
                 dict);

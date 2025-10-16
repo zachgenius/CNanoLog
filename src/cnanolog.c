@@ -51,10 +51,12 @@ static int g_is_initialized = 0;
 static cnanolog_thread_t g_writer_thread;
 
 /* Timing for binary logs */
+#ifndef CNANOLOG_NO_TIMESTAMPS
 static uint64_t g_start_timestamp = 0;
 static time_t g_start_time_sec = 0;
 static int32_t g_start_time_nsec = 0;
 static uint64_t g_timestamp_frequency = 0;  /* CPU frequency (Hz) for rdtsc() */
+#endif
 
 /* ============================================================================
  * Global Statistics Tracking
@@ -116,6 +118,7 @@ static staging_buffer_t* get_or_create_staging_buffer(void);
  * Timestamp Calibration (Phase 5)
  * ============================================================================ */
 
+#ifndef CNANOLOG_NO_TIMESTAMPS
 /**
  * Calibrate rdtsc() frequency by measuring against wall-clock time.
  * This is called once at initialization to determine CPU frequency.
@@ -147,6 +150,7 @@ static void calibrate_timestamp(void) {
     g_start_time_nsec = ts1.tv_nsec;
     g_start_timestamp = ticks1;
 }
+#endif
 
 /* ============================================================================
  * Initialization
@@ -169,6 +173,7 @@ int cnanolog_init(const char* log_file_path) {
     }
 
     /* Calibrate timestamp (Phase 5: Measure CPU frequency) */
+#ifndef CNANOLOG_NO_TIMESTAMPS
     calibrate_timestamp();
 
     /* Write file header with calibrated frequency */
@@ -177,6 +182,16 @@ int cnanolog_init(const char* log_file_path) {
                                g_start_timestamp,
                                g_start_time_sec,
                                g_start_time_nsec) != 0) {
+#else
+    /* No timestamps - write header with zeros for timestamp fields */
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    if (binwriter_write_header(g_binary_writer,
+                               0,  /* No timestamp frequency */
+                               0,  /* No start timestamp */
+                               ts.tv_sec,
+                               (int32_t)ts.tv_nsec) != 0) {
+#endif
         fprintf(stderr, "cnanolog_init: Failed to write header\n");
         binwriter_close(g_binary_writer, NULL, 0);
         log_registry_destroy(&g_registry);
@@ -227,7 +242,11 @@ void cnanolog_shutdown(void) {
             cnanolog_entry_header_t* header = (cnanolog_entry_header_t*)temp_buf;
             binwriter_write_entry(g_binary_writer,
                                 header->log_id,
+#ifndef CNANOLOG_NO_TIMESTAMPS
                                 header->timestamp,
+#else
+                                0,  /* No timestamp */
+#endif
                                 temp_buf + sizeof(cnanolog_entry_header_t),
                                 header->data_length);
 
@@ -326,7 +345,9 @@ void _cnanolog_log_binary(uint32_t log_id,
     /* Write entry header */
     cnanolog_entry_header_t* header = (cnanolog_entry_header_t*)write_ptr;
     header->log_id = log_id;
+#ifndef CNANOLOG_NO_TIMESTAMPS
     header->timestamp = get_timestamp();
+#endif
     header->data_length = (uint16_t)arg_data_size;
 
     /* Pack arguments directly into reserved space */
@@ -355,7 +376,9 @@ static void* writer_thread_main(void* arg) {
 
     /* Batch processing state */
     size_t entries_since_flush = 0;
+#ifndef CNANOLOG_NO_TIMESTAMPS
     uint64_t last_flush_time = get_timestamp();
+#endif
 
     while (!g_should_exit) {
         int found_work = 0;
@@ -447,7 +470,11 @@ static void* writer_thread_main(void* arg) {
                 /* Write to binary file (compressed or uncompressed) */
                 binwriter_write_entry(g_binary_writer,
                                     header->log_id,
+#ifndef CNANOLOG_NO_TIMESTAMPS
                                     header->timestamp,
+#else
+                                    0,  /* No timestamp */
+#endif
                                     data_to_write,
                                     data_len_to_write);
 
@@ -466,9 +493,10 @@ static void* writer_thread_main(void* arg) {
 
         /*
          * Batch flush strategy:
-         * Flush when we've written N entries OR when enough time has passed.
+         * Flush when we've written N entries OR when enough time has passed (if timestamps enabled).
          * This reduces flush frequency while ensuring data doesn't sit too long.
          */
+#ifndef CNANOLOG_NO_TIMESTAMPS
         uint64_t now = get_timestamp();
         uint64_t elapsed_ns = now - last_flush_time;
         uint64_t elapsed_ms = elapsed_ns / 1000000;
@@ -476,11 +504,18 @@ static void* writer_thread_main(void* arg) {
         if (entries_since_flush >= FLUSH_BATCH_SIZE ||
             elapsed_ms >= FLUSH_INTERVAL_MS ||
             (entries_since_flush > 0 && !found_work)) {
+#else
+        /* Without timestamps, flush based on entry count only */
+        if (entries_since_flush >= FLUSH_BATCH_SIZE ||
+            (entries_since_flush > 0 && !found_work)) {
+#endif
             /* Flush to disk */
             binwriter_flush(g_binary_writer);
 
             entries_since_flush = 0;
+#ifndef CNANOLOG_NO_TIMESTAMPS
             last_flush_time = now;
+#endif
         }
 
         /* If no work was found, sleep briefly to avoid spinning */
@@ -571,12 +606,14 @@ static staging_buffer_t* get_or_create_staging_buffer(void) {
  * Timestamp
  * ============================================================================ */
 
+#ifndef CNANOLOG_NO_TIMESTAMPS
 /**
- * Get current timestamp (simple counter for now, will use rdtsc in Phase 5).
+ * Get current timestamp using rdtsc (Phase 5: High-resolution timestamps).
  */
 static uint64_t get_timestamp(void) {
-    return rdtsc();  /* Phase 5: High-resolution timestamps (~5-10ns overhead) */
+    return rdtsc();  /* ~5-10ns overhead */
 }
+#endif
 
 /* ============================================================================
  * Statistics API Implementation

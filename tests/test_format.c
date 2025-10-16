@@ -19,8 +19,13 @@ int test_struct_sizes() {
     if (sizeof(cnanolog_file_header_t) != 64)
         TEST_FAIL("File header size mismatch");
 
+#ifndef CNANOLOG_NO_TIMESTAMPS
     if (sizeof(cnanolog_entry_header_t) != 14)
-        TEST_FAIL("Entry header size mismatch");
+        TEST_FAIL("Entry header size mismatch (with timestamps)");
+#else
+    if (sizeof(cnanolog_entry_header_t) != 6)
+        TEST_FAIL("Entry header size mismatch (no timestamps)");
+#endif
 
     if (sizeof(cnanolog_dict_header_t) != 16)
         TEST_FAIL("Dictionary header size mismatch");
@@ -58,7 +63,9 @@ int test_file_header_offsets() {
         TEST_FAIL("dictionary_offset offset wrong");
     if ((char*)&h.entry_count - base != 48)
         TEST_FAIL("entry_count offset wrong");
-    if ((char*)&h.reserved - base != 52)
+    if ((char*)&h.flags - base != 52)
+        TEST_FAIL("flags offset wrong");
+    if ((char*)&h.reserved - base != 56)
         TEST_FAIL("reserved offset wrong");
 
     TEST_PASS();
@@ -193,12 +200,21 @@ int test_arg_types() {
 /* Test size calculation macros */
 int test_size_macros() {
     /* Entry with no data */
+#ifndef CNANOLOG_NO_TIMESTAMPS
     if (CNANOLOG_ENTRY_TOTAL_SIZE(0) != 14)
-        TEST_FAIL("Entry size macro wrong for 0 bytes");
+        TEST_FAIL("Entry size macro wrong for 0 bytes (with timestamps)");
 
     /* Entry with 4 bytes of data */
     if (CNANOLOG_ENTRY_TOTAL_SIZE(4) != 18)
-        TEST_FAIL("Entry size macro wrong for 4 bytes");
+        TEST_FAIL("Entry size macro wrong for 4 bytes (with timestamps)");
+#else
+    if (CNANOLOG_ENTRY_TOTAL_SIZE(0) != 6)
+        TEST_FAIL("Entry size macro wrong for 0 bytes (no timestamps)");
+
+    /* Entry with 4 bytes of data */
+    if (CNANOLOG_ENTRY_TOTAL_SIZE(4) != 10)
+        TEST_FAIL("Entry size macro wrong for 4 bytes (no timestamps)");
+#endif
 
     /* Dict entry with no strings */
     if (CNANOLOG_DICT_ENTRY_TOTAL_SIZE(0, 0) != 30)

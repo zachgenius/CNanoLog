@@ -31,8 +31,16 @@ int main() {
     cnanolog_entry_header_t entry;
     fread(&entry, 1, sizeof(entry), fp);
     
-    printf("Entry: log_id=%u, timestamp=%llu, data_len=%u\n",
-           entry.log_id, entry.timestamp, entry.data_length);
+    printf("Entry: log_id=%u, "
+#ifndef CNANOLOG_NO_TIMESTAMPS
+           "timestamp=%llu, "
+#endif
+           "data_len=%u\n",
+           entry.log_id,
+#ifndef CNANOLOG_NO_TIMESTAMPS
+           entry.timestamp,
+#endif
+           entry.data_length);
     
     int32_t vals_read[2];
     fread(vals_read, 1, entry.data_length, fp);

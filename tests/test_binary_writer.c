@@ -130,16 +130,24 @@ int test_write_entries() {
     if (fread(&e1, 1, sizeof(e1), fp) != sizeof(e1))
         TEST_FAIL("Failed to read entry 1");
 
-    if (e1.log_id != 0 || e1.timestamp != 100000 || e1.data_length != 0)
+    if (e1.log_id != 0 || e1.data_length != 0)
         TEST_FAIL("Entry 1 data mismatch");
+#ifndef CNANOLOG_NO_TIMESTAMPS
+    if (e1.timestamp != 100000)
+        TEST_FAIL("Entry 1 timestamp mismatch");
+#endif
 
     /* Read second entry */
     cnanolog_entry_header_t e2;
     if (fread(&e2, 1, sizeof(e2), fp) != sizeof(e2))
         TEST_FAIL("Failed to read entry 2");
 
-    if (e2.log_id != 1 || e2.timestamp != 200000 || e2.data_length != 4)
+    if (e2.log_id != 1 || e2.data_length != 4)
         TEST_FAIL("Entry 2 header mismatch");
+#ifndef CNANOLOG_NO_TIMESTAMPS
+    if (e2.timestamp != 200000)
+        TEST_FAIL("Entry 2 timestamp mismatch");
+#endif
 
     int32_t read_value;
     if (fread(&read_value, 1, sizeof(read_value), fp) != sizeof(read_value))
@@ -253,7 +261,15 @@ int test_buffer_flush() {
     binwriter_write_header(writer, 1000000000ULL, 0, 1234567890, 0);
 
     /* Write many entries to trigger buffer flush */
-    for (int i = 0; i < 5000; i++) {
+    /* With timestamps: 14-byte header + 4-byte data = 18 bytes per entry
+     * Without timestamps: 6-byte header + 4-byte data = 10 bytes per entry
+     * Buffer size is 64KB, so we need more entries without timestamps */
+#ifndef CNANOLOG_NO_TIMESTAMPS
+    int num_entries = 5000;  /* 5000 * 18 = 90KB > 64KB */
+#else
+    int num_entries = 8000;  /* 8000 * 10 = 80KB > 64KB */
+#endif
+    for (int i = 0; i < num_entries; i++) {
         int32_t val = i;
         binwriter_write_entry(writer, 0, i, &val, sizeof(val));
     }

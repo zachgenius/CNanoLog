@@ -53,6 +53,12 @@ typedef enum {
 } cnanolog_arg_type_t;
 
 /* ============================================================================
+ * File Header Flags
+ * ============================================================================ */
+
+#define CNANOLOG_FLAG_HAS_TIMESTAMPS  0x00000001  /* Entries include timestamps */
+
+/* ============================================================================
  * File Header (64 bytes)
  * ============================================================================ */
 
@@ -64,14 +70,15 @@ typedef struct {
     uint32_t magic;              /* Magic number: 0x4E414E4F ("NANO") */
     uint16_t version_major;      /* Format version major (currently 1) */
     uint16_t version_minor;      /* Format version minor (currently 0) */
-    uint64_t timestamp_frequency; /* CPU ticks per second (rdtsc frequency) */
-    uint64_t start_timestamp;    /* rdtsc() value when logging started */
+    uint64_t timestamp_frequency; /* CPU ticks per second (rdtsc frequency, 0 if timestamps disabled) */
+    uint64_t start_timestamp;    /* rdtsc() value when logging started (0 if timestamps disabled) */
     int64_t  start_time_sec;     /* Unix epoch seconds when logging started */
     int32_t  start_time_nsec;    /* Nanoseconds component (0-999999999) */
     uint32_t endianness;         /* Always 0x01020304 for endian detection */
     uint64_t dictionary_offset;  /* Byte offset to dictionary (0 = end of file) */
     uint32_t entry_count;        /* Total number of log entries written */
-    uint8_t  reserved[12];       /* Reserved for future use (must be 0) */
+    uint32_t flags;              /* Feature flags (see CNANOLOG_FLAG_*) */
+    uint8_t  reserved[8];        /* Reserved for future use (must be 0) */
 } __attribute__((packed)) cnanolog_file_header_t;
 
 /* Compile-time size check */
@@ -79,22 +86,37 @@ CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_file_header_t) == 64,
                        "File header must be exactly 64 bytes");
 
 /* ============================================================================
- * Log Entry Header (14 bytes)
+ * Log Entry Header (14 bytes with timestamps, 6 bytes without)
  * ============================================================================ */
 
 /**
  * Header for each log entry in the file.
  * Followed by data_length bytes of argument data.
+ *
+ * Size depends on CNANOLOG_NO_TIMESTAMPS:
+ * - With timestamps (default): 14 bytes (log_id + timestamp + data_length)
+ * - Without timestamps: 6 bytes (log_id + data_length)
  */
-typedef struct {
-    uint32_t log_id;        /* Log site identifier (index into dictionary) */
-    uint64_t timestamp;     /* rdtsc() value when log was created */
-    uint16_t data_length;   /* Number of bytes of argument data following */
-} __attribute__((packed)) cnanolog_entry_header_t;
+#ifdef CNANOLOG_NO_TIMESTAMPS
+    typedef struct {
+        uint32_t log_id;        /* Log site identifier (index into dictionary) */
+        uint16_t data_length;   /* Number of bytes of argument data following */
+    } __attribute__((packed)) cnanolog_entry_header_t;
 
-/* Compile-time size check */
-CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_entry_header_t) == 14,
-                       "Entry header must be exactly 14 bytes");
+    /* Compile-time size check */
+    CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_entry_header_t) == 6,
+                           "Entry header (no timestamps) must be exactly 6 bytes");
+#else
+    typedef struct {
+        uint32_t log_id;        /* Log site identifier (index into dictionary) */
+        uint64_t timestamp;     /* rdtsc() value when log was created */
+        uint16_t data_length;   /* Number of bytes of argument data following */
+    } __attribute__((packed)) cnanolog_entry_header_t;
+
+    /* Compile-time size check */
+    CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_entry_header_t) == 14,
+                           "Entry header (with timestamps) must be exactly 14 bytes");
+#endif
 
 /* ============================================================================
  * Dictionary Header (16 bytes)

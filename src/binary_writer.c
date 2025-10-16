@@ -176,6 +176,12 @@ int binwriter_write_header(binary_writer_t* writer,
     header.dictionary_offset = 0;  /* Will be updated in close */
     header.entry_count = 0;        /* Will be updated in close */
 
+    /* Set flags based on compile-time configuration */
+    header.flags = 0;
+#ifndef CNANOLOG_NO_TIMESTAMPS
+    header.flags |= CNANOLOG_FLAG_HAS_TIMESTAMPS;
+#endif
+
     /* Write header directly (bypass buffer for alignment) */
     size_t written = fwrite(&header, 1, sizeof(header), writer->fp);
     if (written != sizeof(header)) {
@@ -205,7 +211,11 @@ int binwriter_write_entry(binary_writer_t* writer,
     /* Build entry header */
     cnanolog_entry_header_t entry_header;
     entry_header.log_id = log_id;
+#ifndef CNANOLOG_NO_TIMESTAMPS
     entry_header.timestamp = timestamp;
+#else
+    (void)timestamp;  /* Suppress unused parameter warning */
+#endif
     entry_header.data_length = data_len;
 
     /* Write entry header */

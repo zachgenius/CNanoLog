@@ -10,6 +10,12 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 11)
 
 # ============================================================================
+# Configuration Options
+# ============================================================================
+
+option(CNANOLOG_ENABLE_TIMESTAMPS "Enable high-resolution timestamps (rdtsc). Disable for maximum throughput." ON)
+
+# ============================================================================
 # Build Type and Optimization Flags
 # ============================================================================
 
@@ -90,6 +96,14 @@ target_include_directories(cnanolog
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+# Apply timestamp configuration
+if(NOT CNANOLOG_ENABLE_TIMESTAMPS)
+    target_compile_definitions(cnanolog PUBLIC CNANOLOG_NO_TIMESTAMPS)
+    message(STATUS "Timestamps: DISABLED (extreme performance mode)")
+else()
+    message(STATUS "Timestamps: ENABLED (rdtsc high-resolution)")
+endif()
 
 # Add platform-specific dependencies
 if(UNIX AND NOT APPLE)

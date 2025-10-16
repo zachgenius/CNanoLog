@@ -29,9 +29,12 @@ int main(void) {
     printf("  data:           %zu (cache line %zu)\n",
            offsetof(staging_buffer_t, data),
            offsetof(staging_buffer_t, data) / CACHE_LINE_SIZE);
-    printf("  write_pos:      %zu (cache line %zu) - PRODUCER (atomic)\n",
+    printf("  write_pos:      %zu (cache line %zu) - PRODUCER\n",
            offsetof(staging_buffer_t, write_pos),
            offsetof(staging_buffer_t, write_pos) / CACHE_LINE_SIZE);
+    printf("  committed:      %zu (cache line %zu) - ATOMIC (consumer-dominated)\n",
+           offsetof(staging_buffer_t, committed),
+           offsetof(staging_buffer_t, committed) / CACHE_LINE_SIZE);
     printf("  read_pos:       %zu (cache line %zu) - CONSUMER\n",
            offsetof(staging_buffer_t, read_pos),
            offsetof(staging_buffer_t, read_pos) / CACHE_LINE_SIZE);
@@ -39,28 +42,27 @@ int main(void) {
 
     /* Verify false sharing prevention */
     size_t write_cacheline = offsetof(staging_buffer_t, write_pos) / CACHE_LINE_SIZE;
+    size_t committed_cacheline = offsetof(staging_buffer_t, committed) / CACHE_LINE_SIZE;
     size_t read_cacheline = offsetof(staging_buffer_t, read_pos) / CACHE_LINE_SIZE;
-    size_t cacheline_distance = (read_cacheline > write_cacheline)
-                                ? (read_cacheline - write_cacheline)
-                                : (write_cacheline - read_cacheline);
 
     printf("False sharing analysis:\n");
-    printf("  write_pos vs read_pos:   %s (lines %zu vs %zu)\n",
-           write_cacheline != read_cacheline ? "DIFFERENT ✓" : "SAME ✗",
-           write_cacheline, read_cacheline);
-    printf("  Cache line distance:     %zu lines (%s)\n",
-           cacheline_distance,
-           cacheline_distance >= 2 ? "EXCELLENT ✓" : "OK");
-    printf("  Note: Using atomic write_pos eliminates need for separate 'committed' field\n");
-    printf("  This reduces cache line bouncing between producer and consumer!\n");
+    printf("  write_pos vs committed:  %s (lines %zu vs %zu)\n",
+           write_cacheline != committed_cacheline ? "DIFFERENT ✓" : "SAME ✗",
+           write_cacheline, committed_cacheline);
+    printf("  committed vs read_pos:   %s (lines %zu vs %zu)\n",
+           committed_cacheline == read_cacheline + 1 ? "ADJACENT ✓" : "DIFFERENT",
+           committed_cacheline, read_cacheline);
+    printf("  Note: committed is atomic and on consumer-dominated cache line\n");
+    printf("  Producer writes it rarely (on commit), consumer reads frequently\n");
+    printf("  This minimizes cache line transfers compared to old design!\n");
     printf("\n");
 
     /* Summary */
     int all_good = 1;
     all_good &= (sizeof(staging_buffer_t) % CACHE_LINE_SIZE == 0);
     all_good &= (_Alignof(staging_buffer_t) == CACHE_LINE_SIZE);
+    all_good &= (write_cacheline != committed_cacheline);
     all_good &= (write_cacheline != read_cacheline);
-    all_good &= (cacheline_distance >= 2);  /* At least 2 cache lines apart */
 
     printf("===================================\n");
     if (all_good) {

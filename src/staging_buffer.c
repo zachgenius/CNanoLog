@@ -21,14 +21,14 @@ staging_buffer_t* staging_buffer_create(uint32_t thread_id) {
     /* Zero out the entire structure first */
     memset(sb, 0, sizeof(staging_buffer_t));
 
-    /* Initialize atomic fields - use atomic_store instead of atomic_init
-     * since memset already zeroed it */
-    atomic_store_explicit(&sb->write_pos, 0, memory_order_relaxed);
-
     /* Initialize non-atomic fields */
+    sb->write_pos = 0;
     sb->read_pos = 0;
     sb->thread_id = thread_id;
     sb->active = 1;
+
+    /* Initialize atomic committed field */
+    atomic_store_explicit(&sb->committed, 0, memory_order_relaxed);
 
     return sb;
 }
@@ -48,11 +48,8 @@ char* staging_reserve(staging_buffer_t* sb, size_t nbytes) {
         return NULL;
     }
 
-    /* Get current write position (relaxed, only producer modifies this) */
-    size_t current_write_pos = atomic_load_explicit(&sb->write_pos, memory_order_relaxed);
-
     /* Check if we have enough space at current position */
-    size_t available = STAGING_BUFFER_SIZE - current_write_pos;
+    size_t available = STAGING_BUFFER_SIZE - sb->write_pos;
 
     if (nbytes > available) {
         /*
@@ -83,7 +80,7 @@ char* staging_reserve(staging_buffer_t* sb, size_t nbytes) {
              * Consumer will detect this and wrap read_pos to 0.
              */
             cnanolog_entry_header_t* wrap_marker =
-                (cnanolog_entry_header_t*)(sb->data + current_write_pos);
+                (cnanolog_entry_header_t*)(sb->data + sb->write_pos);
 
             wrap_marker->log_id = STAGING_WRAP_MARKER_LOG_ID;
             wrap_marker->data_length = 0;
@@ -92,7 +89,7 @@ char* staging_reserve(staging_buffer_t* sb, size_t nbytes) {
 #endif
 
             /* Step 2: Calculate end position of wrap marker */
-            size_t wrap_marker_end = current_write_pos + sizeof(cnanolog_entry_header_t);
+            size_t wrap_marker_end = sb->write_pos + sizeof(cnanolog_entry_header_t);
 
             /* Verify wrap marker doesn't overflow buffer */
             if (wrap_marker_end > STAGING_BUFFER_SIZE) {
@@ -105,11 +102,12 @@ char* staging_reserve(staging_buffer_t* sb, size_t nbytes) {
              * This makes the wrap marker visible to consumer before we wrap.
              * Release semantics ensure all previous writes (wrap marker data) complete first.
              */
-            atomic_store_explicit(&sb->write_pos, wrap_marker_end, memory_order_release);
+            atomic_store_explicit(&sb->committed, wrap_marker_end, memory_order_release);
 
-            /* Step 4: Allocate at beginning (use relaxed, only producer modifies) */
+            /* Step 4: Wrap write_pos to beginning and allocate */
+            sb->write_pos = 0;
             char* ptr = sb->data;
-            atomic_store_explicit(&sb->write_pos, nbytes, memory_order_relaxed);
+            sb->write_pos += nbytes;
 
             return ptr;
         }
@@ -119,8 +117,8 @@ char* staging_reserve(staging_buffer_t* sb, size_t nbytes) {
     }
 
     /* Enough space at current position - normal allocation */
-    char* ptr = sb->data + current_write_pos;
-    atomic_store_explicit(&sb->write_pos, current_write_pos + nbytes, memory_order_relaxed);
+    char* ptr = sb->data + sb->write_pos;
+    sb->write_pos += nbytes;
 
     return ptr;
 }
@@ -131,22 +129,21 @@ void staging_commit(staging_buffer_t* sb, size_t nbytes) {
     }
 
     /*
-     * Make write_pos visible to consumer with release semantics.
+     * Atomically publish write_pos to committed with release semantics.
      *
      * This is the key to the lock-free design:
      * - Producer writes data to reserved space
-     * - Producer updated write_pos with relaxed stores in staging_reserve()
-     * - This atomic_store with release semantics ensures all previous writes
-     *   (both the data and the relaxed write_pos stores) become visible
-     * - Consumer reads write_pos with acquire semantics
+     * - Producer updated write_pos (non-atomic, only producer touches it)
+     * - This atomic_store ensures all previous writes (data + write_pos) become visible
+     * - Consumer reads committed with acquire semantics
      * - Consumer's reads are guaranteed to see all producer writes
      *
-     * We read the current write_pos and store it back with release semantics
-     * to establish the synchronization point. This "publishes" the tentative
-     * write_pos value that was set in staging_reserve().
+     * Improved cache behavior:
+     * - write_pos is on producer's private cache line
+     * - committed is on consumer-dominated cache line (consumer reads frequently)
+     * - Producer only writes committed occasionally (on commit), minimizing cache line transfers
      */
-    size_t current_pos = atomic_load_explicit(&sb->write_pos, memory_order_relaxed);
-    atomic_store_explicit(&sb->write_pos, current_pos, memory_order_release);
+    atomic_store_explicit(&sb->committed, sb->write_pos, memory_order_release);
 }
 
 void staging_adjust_reservation(staging_buffer_t* sb, size_t reserved_bytes, size_t actual_bytes) {
@@ -159,11 +156,10 @@ void staging_adjust_reservation(staging_buffer_t* sb, size_t reserved_bytes, siz
         return;
     }
 
-    /* Give back the unused space by reducing write_pos */
+    /* Give back the unused space by reducing write_pos (non-atomic) */
     size_t unused = reserved_bytes - actual_bytes;
     if (unused > 0) {
-        size_t current_pos = atomic_load_explicit(&sb->write_pos, memory_order_relaxed);
-        atomic_store_explicit(&sb->write_pos, current_pos - unused, memory_order_relaxed);
+        sb->write_pos -= unused;
     }
 }
 
@@ -177,22 +173,22 @@ size_t staging_available(const staging_buffer_t* sb) {
     }
 
     /*
-     * Read write_pos atomically with acquire semantics.
+     * Read committed atomically with acquire semantics.
      * This synchronizes with the release store in staging_commit(),
      * ensuring we see all the producer's writes to the data buffer.
      */
-    size_t write_position = atomic_load_explicit(&sb->write_pos, memory_order_acquire);
+    size_t committed_pos = atomic_load_explicit(&sb->committed, memory_order_acquire);
 
-    if (write_position >= sb->read_pos) {
-        /* Normal case: write_pos is ahead of read_pos */
-        return write_position - sb->read_pos;
+    if (committed_pos >= sb->read_pos) {
+        /* Normal case: committed is ahead of read_pos */
+        return committed_pos - sb->read_pos;
     } else {
         /*
-         * Wrap-around case: write_pos < read_pos
+         * Wrap-around case: committed < read_pos
          * This means the producer wrapped to the beginning.
          * Consumer should read from read_pos to end of buffer first,
          * where it will find a wrap marker and wrap read_pos to 0.
-         * After wrapping, it can then read from 0 to write_pos.
+         * After wrapping, it can then read from 0 to committed.
          */
         return STAGING_BUFFER_SIZE - sb->read_pos;
     }
@@ -232,10 +228,10 @@ void staging_consume(staging_buffer_t* sb, size_t nbytes) {
      * 1. Consumer detects wrap marker and calls staging_wrap_read_pos()
      * 2. Buffer is completely empty and both positions are at end
      */
-    size_t current_write_pos = atomic_load_explicit(&sb->write_pos, memory_order_relaxed);
+    size_t committed_pos = atomic_load_explicit(&sb->committed, memory_order_relaxed);
     if (sb->read_pos >= STAGING_BUFFER_SIZE - sizeof(cnanolog_entry_header_t) &&
-        sb->read_pos >= current_write_pos &&
-        current_write_pos == 0) {
+        sb->read_pos >= committed_pos &&
+        sb->write_pos == 0) {
         /*
          * Special case: read_pos is at end, write_pos wrapped to 0,
          * and everything is consumed. Reset to avoid read_pos overflow.
@@ -270,7 +266,8 @@ void staging_reset(staging_buffer_t* sb) {
         return;
     }
 
-    atomic_store_explicit(&sb->write_pos, 0, memory_order_relaxed);
+    sb->write_pos = 0;
+    atomic_store_explicit(&sb->committed, 0, memory_order_relaxed);
     sb->read_pos = 0;
 }
 
@@ -283,9 +280,8 @@ uint8_t staging_fill_percent(const staging_buffer_t* sb) {
         return 0;
     }
 
-    /* Calculate fill percentage based on write_pos (relaxed read is fine for stats) */
-    size_t write_position = atomic_load_explicit(&sb->write_pos, memory_order_relaxed);
-    return (uint8_t)((write_position * 100) / STAGING_BUFFER_SIZE);
+    /* Calculate fill percentage based on write_pos (non-atomic read is fine) */
+    return (uint8_t)((sb->write_pos * 100) / STAGING_BUFFER_SIZE);
 }
 
 int staging_is_full(const staging_buffer_t* sb) {
@@ -293,8 +289,7 @@ int staging_is_full(const staging_buffer_t* sb) {
         return 0;
     }
 
-    size_t write_position = atomic_load_explicit(&sb->write_pos, memory_order_relaxed);
-    return (write_position >= STAGING_BUFFER_SIZE);
+    return (sb->write_pos >= STAGING_BUFFER_SIZE);
 }
 
 int staging_is_empty(const staging_buffer_t* sb) {
@@ -302,7 +297,7 @@ int staging_is_empty(const staging_buffer_t* sb) {
         return 1;
     }
 
-    /* Read write_pos with acquire semantics for consistency */
-    size_t write_position = atomic_load_explicit(&sb->write_pos, memory_order_acquire);
-    return (write_position == sb->read_pos);
+    /* Read committed with acquire semantics */
+    size_t committed_pos = atomic_load_explicit(&sb->committed, memory_order_acquire);
+    return (committed_pos == sb->read_pos);
 }

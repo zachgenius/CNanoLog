@@ -63,50 +63,60 @@ extern "C" {
  * Thread-local staging buffer for lock-free logging.
  *
  * Memory Model:
- *   [======= written =======][------- free -------]
- *   ^                        ^
- *   read_pos                 write_pos (atomic)
+ *   [======= committed =======][--- reserved ---][------- free -------]
+ *   ^                          ^                  ^
+ *   read_pos                   committed          write_pos
  *
  * Producer (logging thread):
- *   - Increments write_pos to reserve space (no lock)
+ *   - Increments write_pos to reserve space (no lock, non-atomic)
  *   - Writes data
- *   - Updates write_pos atomically (with release semantics)
+ *   - Updates committed atomically (with release semantics)
  *
  * Consumer (background thread):
- *   - Reads atomic write_pos (with acquire semantics)
- *   - Reads from read_pos up to write_pos
+ *   - Reads atomic committed (with acquire semantics)
+ *   - Reads from read_pos up to committed
  *   - Increments read_pos after consuming
  *
  * Note: Single-producer, single-consumer model (one thread writes, background thread reads)
  *
- * Cache-Line Optimization:
- *   Fields are padded to separate cache lines to avoid false sharing.
- *   - Producer writes atomic write_pos (own cache line)
- *   - Extra padding for separation (one full cache line)
- *   - Consumer writes read_pos (own cache line, 128-byte separation)
+ * Cache-Line Optimization (IMPROVED):
+ *   Fields are carefully placed to minimize false sharing:
+ *   - Producer cache line: write_pos (only producer touches)
+ *   - (128-byte padding for separation)
+ *   - Consumer-dominated cache line: committed (atomic, producer writes rarely, consumer reads frequently)
+ *   - Consumer cache line: read_pos (only consumer touches)
+ *
+ *   Key insight: committed is written by producer but read by consumer frequently.
+ *   Placing it near read_pos means it's likely in consumer's cache. Producer only
+ *   writes it occasionally (on commit), so cache line transfers are minimized.
  *
  * Atomic Synchronization:
- *   - Producer uses atomic_store with memory_order_release on write_pos
- *   - Consumer uses atomic_load with memory_order_acquire on write_pos
- *   - This eliminates the need for a separate "committed" field and reduces
- *     cache line ping-ponging between producer and consumer threads
+ *   - Producer uses atomic_store with memory_order_release on committed
+ *   - Consumer uses atomic_load with memory_order_acquire on committed
+ *   - write_pos remains non-atomic (only producer accesses it)
+ *   - This reduces cache line transfers compared to old design where committed
+ *     was on a separate cache line between producer and consumer
  */
 typedef struct ALIGN_CACHELINE {
     /* Buffer storage - naturally aligned at start */
     char data[STAGING_BUFFER_SIZE];
 
     /* Producer cache line - only written by logging thread */
-    atomic_size_t write_pos;
-    char _pad1[CACHE_LINE_SIZE - sizeof(atomic_size_t)];
+    size_t write_pos;
+    char _pad1[CACHE_LINE_SIZE - sizeof(size_t)];
 
-    /* Extra padding for cache line separation (no shared fields!) */
+    /* Extra padding for maximum separation (128 bytes total) */
     char _pad2[CACHE_LINE_SIZE];
 
-    /* Consumer cache line - written by background thread (128-byte separation) */
+    /* Consumer-dominated cache line - atomic, written by producer on commit, read by consumer frequently */
+    atomic_size_t committed;
+    char _pad3[CACHE_LINE_SIZE - sizeof(atomic_size_t)];
+
+    /* Consumer cache line - only written by background thread */
     size_t read_pos;
     uint32_t thread_id;
     uint8_t active;
-    char _pad3[CACHE_LINE_SIZE - sizeof(size_t) - sizeof(uint32_t) - sizeof(uint8_t)];
+    char _pad4[CACHE_LINE_SIZE - sizeof(size_t) - sizeof(uint32_t) - sizeof(uint8_t)];
 } staging_buffer_t;
 
 /* Compile-time verification of cache-line alignment */

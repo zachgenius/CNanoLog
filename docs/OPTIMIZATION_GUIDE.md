@@ -123,21 +123,6 @@ void _cnanolog_log_binary(uint32_t log_id, uint8_t num_args,
 }
 ```
 
-**Total theoretical:** 25ns
-**Actual measured:** 19.8ns (compiler optimizations already helping!)
-
-### Optimization Targets
-
-| Optimization | Saves | New Total |
-|--------------|-------|-----------|
-| **Current** | - | 19.8ns |
-| Inline arg_pack functions | 2ns | 17.8ns |
-| Remove timestamp (optional) | 8ns | 9.8ns |
-| Branch prediction hints | 1ns | 8.8ns |
-| Combined pack+calc | 2ns | 6.8ns |
-| **Optimized (no timestamp)** | - | **~7-9ns** |
-| **Optimized (with timestamp)** | - | **~15-17ns** |
-
 ## Detailed Optimizations
 
 ### Optimization 1: Inline Everything (saves 2-3ns)

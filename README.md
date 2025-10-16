@@ -2,21 +2,54 @@
 
 **Ultra-fast, low-latency binary logging library for C**
 
-CNanoLog is a high-performance logging library inspired by [NanoLog](https://github.com/PlatformLab/NanoLog) from Stanford. It achieves **sub-20 nanosecond** logging latency through aggressive compile-time optimization, binary format compression, and lock-free thread-local buffering.
+CNanoLog is a high-performance logging library inspired by [NanoLog](https://github.com/PlatformLab/NanoLog) from Stanford. It achieves **54ns median, 108ns p99.9 latency** on HFT hardware, outperforming both NanoLog and fmtlog across all workloads.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![C11](https://img.shields.io/badge/std-C11-blue.svg)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com)
 
+## Performance Highlights
+
+**Comprehensive Benchmark Results (Production Linux with Core Binding)**
+
+### Single-Threaded Performance (Timestamps OFF)
+
+| Metric | CNanoLog | NanoLog | fmtlog | spdlog | glog |
+|--------|----------|---------|---------|--------|------|
+| **0 args p50** | **54ns** 🥇 | 108ns | 108ns | 1134ns | 2484ns |
+| **2 ints p99.9** | **108ns** 🥇 | 702ns | 702ns | 22788ns | 9936ns |
+| **string p99.9** | **108ns** 🥇 | 702ns | 702ns | 24408ns | 10098ns |
+| **medium msg p99.9** | **594ns** 🥇 | 1512ns | 810ns | 23112ns | 13230ns |
+
+### Multithreaded Performance (4 threads, core binding)
+
+| Library | p50 | p99.9 | Result |
+|---------|-----|-------|--------|
+| **CNanoLog (TS OFF)** | **108ns** | **162ns** | 🥇 **Fastest** |
+| **CNanoLog (TS ON)** | 162ns | 216ns | 🥈 Excellent |
+| fmtlog | 162ns | 216ns | 🥈 Excellent |
+| NanoLog | 162ns | 1080ns | Fair |
+| spdlog | 4752ns | 54540ns | 40x slower |
+| glog | 4266ns | 56970ns | 35x slower |
+
+**Key Results**:
+- 🏆 **CNanoLog wins all single-threaded benchmarks**
+- ⚡ **String operations**: Improved to **108ns p99.9** (best-in-class)
+- 🚀 **2.5x faster than NanoLog** for medium messages (594ns vs 1512ns)
+- 🔥 **6.7x faster than NanoLog** in multithreaded p99.9 (162ns vs 1080ns)
+- 💾 **Smallest log files**: 43MB vs NanoLog 263MB, spdlog 482MB
+- ⚡ **20-200x faster than spdlog/glog** across all workloads
+
+📊 **[Complete Performance Analysis](docs/PERFORMANCE.md)** - Deep dive with comprehensive comparison table of all 5 libraries
+
 ## Key Features
 
 ### Ultra-Low Latency
-- **Sub-20ns hot-path** logging with compile-time format string extraction
+- **54ns median, 108ns p99.9** latency on HFT hardware
 - **Lock-free producer threads** using thread-local staging buffers
-- **Optional RDTSC timestamps** - disable for extreme performance mode
+- **Binary encoding** with deferred formatting (no sprintf overhead)
+- **Cache-line aligned** buffers prevent false sharing
 - **Preallocate API** to eliminate first-log allocation overhead
-
-(Note: Actual latency may vary based on platform and workload)
 
 ### Binary Logging Format
 - **Compact binary encoding** with variable-byte integer compression
@@ -319,6 +352,13 @@ CMakeToolchain
 For detailed integration instructions:
 - **vcpkg**: See [VCPKG.md](docs/VCPKG.md)
 - **Conan**: See [CONAN.md](docs/CONAN.md)
+
+## Documentation
+
+- 📊 **[Performance Analysis](docs/PERFORMANCE.md)** - Detailed comparison with NanoLog and fmtlog
+- 📖 **[Binary Format Specification](docs/BINARY_FORMAT_SPEC.md)** - Complete format documentation
+- 🚀 **[Optimization Guide](docs/OPTIMIZATION_GUIDE.md)** - Performance tuning tips
+- 🔧 **[Build Instructions](docs/BUILD.md)** - Detailed build and integration guide
 
 ## Architecture
 

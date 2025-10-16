@@ -233,7 +233,7 @@ posix_memalign((void**)&sb, CACHE_LINE_SIZE, sizeof(staging_buffer_t));
 - Uses {fmt} library for formatting
 - Outputs human-readable text
 
-**Hot Path** (`/Users/zach/Develop/cnanolog_benchmark/libraries/fmtlog/fmtlog.h:670-693`):
+**Hot Path** (`[https://github.com/MengRao/fmtlog/blob/308b2317d4e9c21d3b203d104007fde127dcdbfa/fmtlog.h](https://github.com/MengRao/fmtlog/blob/308b2317d4e9c21d3b203d104007fde127dcdbfa/fmtlog.h):670-693`):
 ```cpp
 template<typename... Args>
 inline void log(uint32_t& logId, int64_t tsc, const char* location,
@@ -304,7 +304,7 @@ inline void log(uint32_t& logId, int64_t tsc, const char* location,
 - Variable-byte integer compression (Packer.h)
 - Complex build system integration
 
-**Hot Path** (`/Users/zach/Develop/cnanolog_benchmark/libraries/nanolog/runtime/RuntimeLogger.h:104-123`):
+**Hot Path** (`[cnanolog_benchmark/libraries/nanolog/runtime/RuntimeLogger](https://github.com/PlatformLab/NanoLog/blob/2a94d70f9d1db4da416053b1b926387fa068a59b/runtime/RuntimeLogger.h):104-123`):
 ```cpp
 // Allocate space in staging buffer
 static inline char* reserveAlloc(size_t nbytes) {

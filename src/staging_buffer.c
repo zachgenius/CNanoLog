@@ -3,6 +3,7 @@
  */
 
 #include "staging_buffer.h"
+#include "../include/cnanolog_format.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -72,14 +73,64 @@ char* staging_reserve(staging_buffer_t* sb, size_t nbytes) {
         return NULL;
     }
 
-    /* Check if we have enough space */
+    /* Check if we have enough space at current position */
     size_t available = STAGING_BUFFER_SIZE - sb->write_pos;
+
     if (nbytes > available) {
-        /* Not enough space - buffer is full */
+        /*
+         * Not enough space at end of buffer - attempt wrap-around.
+         *
+         * Circular buffer strategy:
+         * - If consumer has advanced (read_pos > 0), we can wrap to beginning
+         * - Write wrap marker at current position to signal consumer
+         * - Reset write_pos to 0 and try to allocate there
+         */
+
+        /* Check space available from beginning (0 to read_pos) */
+        size_t space_at_beginning = sb->read_pos;
+
+        /* Need space for wrap marker + requested allocation */
+        if (space_at_beginning > nbytes && available >= sizeof(cnanolog_entry_header_t)) {
+            /*
+             * Wrap around is possible!
+             *
+             * Step 1: Write wrap marker at current position.
+             * The marker looks like a regular entry with log_id = 0xFFFFFFFF.
+             * Consumer will detect this and wrap read_pos to 0.
+             */
+            cnanolog_entry_header_t* wrap_marker =
+                (cnanolog_entry_header_t*)(sb->data + sb->write_pos);
+
+            wrap_marker->log_id = STAGING_WRAP_MARKER_LOG_ID;
+            wrap_marker->data_length = 0;
+#ifndef CNANOLOG_NO_TIMESTAMPS
+            wrap_marker->timestamp = 0;
+#endif
+
+            /* Step 2: Advance write_pos past wrap marker */
+            sb->write_pos += sizeof(cnanolog_entry_header_t);
+
+            /* Step 3: Memory fence to ensure wrap marker is written */
+            memory_fence_release();
+
+            /* Step 4: Commit wrap marker (make visible to consumer) */
+            sb->committed = sb->write_pos;
+
+            /* Step 5: Wrap write_pos to beginning */
+            sb->write_pos = 0;
+
+            /* Step 6: Allocate at beginning */
+            char* ptr = sb->data + sb->write_pos;
+            sb->write_pos += nbytes;
+
+            return ptr;
+        }
+
+        /* Cannot wrap - buffer is truly full */
         return NULL;
     }
 
-    /* Reserve space by returning pointer and advancing write_pos */
+    /* Enough space at current position - normal allocation */
     char* ptr = sb->data + sb->write_pos;
     sb->write_pos += nbytes;
 
@@ -178,12 +229,39 @@ void staging_consume(staging_buffer_t* sb, size_t nbytes) {
     sb->read_pos += nbytes;
 
     /*
-     * Optimization: If we've consumed everything, reset the buffer.
-     * This prevents the buffer from filling up and needing reallocation.
+     * Note: With circular buffer, we don't automatically reset positions.
+     * Reset happens explicitly when:
+     * 1. Consumer detects wrap marker and calls staging_wrap_read_pos()
+     * 2. Buffer is completely empty and both positions are at end
      */
-    if (sb->read_pos >= sb->committed && sb->read_pos == sb->write_pos) {
+    if (sb->read_pos >= STAGING_BUFFER_SIZE - sizeof(cnanolog_entry_header_t) &&
+        sb->read_pos == sb->committed &&
+        sb->write_pos == 0) {
+        /*
+         * Special case: read_pos is at end, write_pos wrapped to 0,
+         * and everything is consumed. Reset to avoid read_pos overflow.
+         */
         sb->read_pos = 0;
-        sb->write_pos = 0;
+        sb->committed = 0;
+    }
+}
+
+/**
+ * Wrap read_pos to beginning of buffer.
+ * Called by consumer when it detects a wrap marker (log_id == 0xFFFFFFFF).
+ *
+ * @param sb Staging buffer
+ */
+void staging_wrap_read_pos(staging_buffer_t* sb) {
+    if (sb == NULL) {
+        return;
+    }
+
+    /* Wrap read position to beginning */
+    sb->read_pos = 0;
+
+    /* If committed pointer was also at the end, wrap it too */
+    if (sb->committed >= STAGING_BUFFER_SIZE - sizeof(cnanolog_entry_header_t)) {
         sb->committed = 0;
     }
 }

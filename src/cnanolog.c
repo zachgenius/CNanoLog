@@ -449,6 +449,15 @@ static void* writer_thread_main(void* arg) {
 
                 /* Parse entry header to get total size */
                 cnanolog_entry_header_t* header = (cnanolog_entry_header_t*)temp_buf;
+
+                /* Check for wrap marker (circular buffer wrap-around) */
+                if (header->log_id == STAGING_WRAP_MARKER_LOG_ID) {
+                    /* This is a wrap marker - consumer should wrap to beginning */
+                    staging_consume(sb, sizeof(cnanolog_entry_header_t));
+                    staging_wrap_read_pos(sb);
+                    continue;  /* Continue processing from beginning */
+                }
+
                 size_t entry_size = sizeof(cnanolog_entry_header_t) + header->data_length;
 
                 /* Check if we have the full entry available */

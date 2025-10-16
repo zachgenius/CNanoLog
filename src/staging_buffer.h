@@ -44,6 +44,16 @@ extern "C" {
  */
 #define STAGING_BUFFER_SIZE (12 * 1024 * 1024)
 
+/**
+ * Wrap marker log_id value.
+ * When the producer reaches the end of the buffer and needs to wrap around,
+ * it writes a special entry with this log_id to signal the consumer.
+ * The consumer detects this marker and resets read_pos to 0.
+ *
+ * This enables true circular buffer behavior with immediate space reclamation.
+ */
+#define STAGING_WRAP_MARKER_LOG_ID 0xFFFFFFFF
+
 /* ============================================================================
  * Staging Buffer Structure
  * ============================================================================ */
@@ -195,6 +205,18 @@ size_t staging_read(staging_buffer_t* sb, char* out, size_t max_len);
  * @param nbytes Number of bytes to mark as consumed
  */
 void staging_consume(staging_buffer_t* sb, size_t nbytes);
+
+/**
+ * Wrap read_pos to beginning of buffer.
+ * This should be called by the consumer when it detects a wrap marker
+ * (entry with log_id == STAGING_WRAP_MARKER_LOG_ID).
+ *
+ * The wrap marker is written by the producer when it needs to wrap around
+ * due to insufficient space at the end of the buffer.
+ *
+ * @param sb Staging buffer
+ */
+void staging_wrap_read_pos(staging_buffer_t* sb);
 
 /**
  * Reset the staging buffer to empty state.

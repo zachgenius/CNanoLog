@@ -329,8 +329,30 @@ void _cnanolog_log_binary(uint32_t log_id,
         return;  /* Failed to allocate buffer */
     }
 
-    size_t max_entry_size = MAX_LOG_ENTRY_SIZE;
-    char* write_ptr = staging_reserve(sb, max_entry_size);
+    /* Calculate exact size for fixed-size args, early exit for strings */
+    size_t reserve_size = sizeof(cnanolog_entry_header_t);
+
+    for (uint8_t i = 0; i < num_args; i++) {
+        if (arg_types[i] == ARG_TYPE_STRING) {
+            reserve_size = MAX_LOG_ENTRY_SIZE;
+            break;
+        }
+
+        switch (arg_types[i]) {
+            case ARG_TYPE_INT32:
+            case ARG_TYPE_UINT32:
+                reserve_size += 4;
+                break;
+            case ARG_TYPE_INT64:
+            case ARG_TYPE_UINT64:
+            case ARG_TYPE_DOUBLE:
+            case ARG_TYPE_POINTER:
+                reserve_size += 8;
+                break;
+        }
+    }
+
+    char* write_ptr = staging_reserve(sb, reserve_size);
     if (unlikely(write_ptr == NULL)) {
 #if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
         g_stats.dropped_logs++;
@@ -350,12 +372,12 @@ void _cnanolog_log_binary(uint32_t log_id,
         va_start(args, arg_types);
         char* arg_data = write_ptr + sizeof(cnanolog_entry_header_t);
         arg_data_size = arg_pack_write_fast(arg_data,
-                                             max_entry_size - sizeof(cnanolog_entry_header_t),
+                                             reserve_size - sizeof(cnanolog_entry_header_t),
                                              num_args, arg_types, args);
         va_end(args);
 
         if (unlikely(arg_data_size == 0)) {
-            staging_adjust_reservation(sb, max_entry_size, 0);
+            staging_adjust_reservation(sb, reserve_size, 0);
 #if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
             g_stats.dropped_logs++;
 #endif
@@ -366,7 +388,10 @@ void _cnanolog_log_binary(uint32_t log_id,
     header->data_length = (uint16_t)arg_data_size;
     size_t actual_entry_size = sizeof(cnanolog_entry_header_t) + arg_data_size;
 
-    staging_adjust_reservation(sb, max_entry_size, actual_entry_size);
+    /* Only adjust if we reserved pessimistically (MAX_LOG_ENTRY_SIZE) */
+    if (reserve_size == MAX_LOG_ENTRY_SIZE && actual_entry_size != reserve_size) {
+        staging_adjust_reservation(sb, reserve_size, actual_entry_size);
+    }
     staging_commit(sb, actual_entry_size);
 }
 

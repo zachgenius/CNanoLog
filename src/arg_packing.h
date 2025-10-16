@@ -69,7 +69,13 @@ static inline size_t arg_pack_write_fast(char* buffer, size_t buffer_size,
             }
             case ARG_TYPE_STRING: {
                 const char* str = va_arg(args, const char*);
-                uint32_t len = str ? (uint32_t)strlen(str) : 0;
+                /* Use __builtin_strlen for potential compile-time optimization */
+                uint32_t len;
+#if defined(__GNUC__) || defined(__clang__)
+                len = str ? (uint32_t)__builtin_strlen(str) : 0;
+#else
+                len = str ? (uint32_t)strlen(str) : 0;
+#endif
                 if (write_ptr + sizeof(len) + len > buffer_end) return 0;
                 memcpy(write_ptr, &len, sizeof(len));
                 write_ptr += sizeof(len);

@@ -8,6 +8,7 @@
 #pragma once
 
 #include "platform.h"
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -62,40 +63,46 @@ extern "C" {
  * Thread-local staging buffer for lock-free logging.
  *
  * Memory Model:
- *   [====== committed ======][--- reserved ---][------- free -------]
- *   ^                        ^                  ^
- *   read_pos                 committed          write_pos
+ *   [======= written =======][------- free -------]
+ *   ^                        ^
+ *   read_pos                 write_pos (atomic)
  *
  * Producer (logging thread):
  *   - Increments write_pos to reserve space (no lock)
  *   - Writes data
- *   - Updates committed atomically (with memory fence)
+ *   - Updates write_pos atomically (with release semantics)
  *
  * Consumer (background thread):
- *   - Reads from read_pos up to committed
+ *   - Reads atomic write_pos (with acquire semantics)
+ *   - Reads from read_pos up to write_pos
  *   - Increments read_pos after consuming
  *
  * Note: Single-producer, single-consumer model (one thread writes, background thread reads)
  *
  * Cache-Line Optimization:
  *   Fields are padded to separate cache lines to avoid false sharing.
- *   - Producer writes write_pos (own cache line)
- *   - Shared committed field (own cache line)
- *   - Consumer writes read_pos (own cache line)
+ *   - Producer writes atomic write_pos (own cache line)
+ *   - Extra padding for separation (one full cache line)
+ *   - Consumer writes read_pos (own cache line, 128-byte separation)
+ *
+ * Atomic Synchronization:
+ *   - Producer uses atomic_store with memory_order_release on write_pos
+ *   - Consumer uses atomic_load with memory_order_acquire on write_pos
+ *   - This eliminates the need for a separate "committed" field and reduces
+ *     cache line ping-ponging between producer and consumer threads
  */
 typedef struct ALIGN_CACHELINE {
     /* Buffer storage - naturally aligned at start */
     char data[STAGING_BUFFER_SIZE];
 
     /* Producer cache line - only written by logging thread */
-    size_t write_pos;
-    char _pad1[CACHE_LINE_SIZE - sizeof(size_t)];
+    atomic_size_t write_pos;
+    char _pad1[CACHE_LINE_SIZE - sizeof(atomic_size_t)];
 
-    /* Shared cache line - written by producer, read by consumer */
-    volatile size_t committed;
-    char _pad2[CACHE_LINE_SIZE - sizeof(size_t)];
+    /* Extra padding for cache line separation (no shared fields!) */
+    char _pad2[CACHE_LINE_SIZE];
 
-    /* Consumer cache line - written by background thread */
+    /* Consumer cache line - written by background thread (128-byte separation) */
     size_t read_pos;
     uint32_t thread_id;
     uint8_t active;
@@ -150,12 +157,13 @@ char* staging_reserve(staging_buffer_t* sb, size_t nbytes);
 /**
  * Commit previously reserved space.
  * Makes the data visible to the consumer (background thread).
- * Includes memory fence to ensure all writes complete before commit.
+ * Uses atomic store with release semantics to ensure all writes complete.
  *
  * @param sb Staging buffer
  * @param nbytes Number of bytes to commit (must match staging_reserve)
  *
  * Note: Must be called after staging_reserve() with the same nbytes value.
+ *       This performs an atomic store with memory_order_release on write_pos.
  */
 void staging_commit(staging_buffer_t* sb, size_t nbytes);
 

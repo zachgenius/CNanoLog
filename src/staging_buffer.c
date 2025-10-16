@@ -13,10 +13,18 @@
  * ============================================================================ */
 
 staging_buffer_t* staging_buffer_create(uint32_t thread_id) {
-    staging_buffer_t* sb = (staging_buffer_t*)malloc(sizeof(staging_buffer_t));
+    /* Use posix_memalign for perfect cache-line alignment (64 bytes) */
+    staging_buffer_t* sb = NULL;
+#ifndef _WIN32
+    if (posix_memalign((void**)&sb, CACHE_LINE_SIZE, sizeof(staging_buffer_t)) != 0) {
+        return NULL;
+    }
+#else
+    sb = (staging_buffer_t*)malloc(sizeof(staging_buffer_t));
     if (sb == NULL) {
         return NULL;
     }
+#endif
 
     /* Zero out the entire structure first */
     memset(sb, 0, sizeof(staging_buffer_t));

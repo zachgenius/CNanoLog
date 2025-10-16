@@ -54,11 +54,10 @@ extern "C" {
  *
  * Producer: Reserves space (write_pos), writes data, commits atomically.
  * Consumer: Reads committed entries (read_pos to committed), consumes data.
+ *
+ * Layout: Hot fields at FRONT (better cache locality), data buffer at END.
  */
 typedef struct ALIGN_CACHELINE {
-    /* Buffer storage - naturally aligned at start */
-    char data[STAGING_BUFFER_SIZE];
-
     /* Producer cache line - only written by logging thread */
     size_t write_pos;
     char _pad1[CACHE_LINE_SIZE - sizeof(size_t)];
@@ -75,6 +74,9 @@ typedef struct ALIGN_CACHELINE {
     uint32_t thread_id;
     uint8_t active;
     char _pad4[CACHE_LINE_SIZE - sizeof(size_t) - sizeof(uint32_t) - sizeof(uint8_t)];
+
+    /* Buffer storage - at end to keep hot fields close to struct base */
+    char data[STAGING_BUFFER_SIZE];
 } staging_buffer_t;
 
 /* Compile-time verification of cache-line alignment */

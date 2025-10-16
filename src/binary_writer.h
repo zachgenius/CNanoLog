@@ -30,9 +30,8 @@ extern "C" {
  * The binary writer will call fflush() once every N buffer flushes to ensure
  * data durability while maintaining high performance during bursts.
  *
- * Setting this to 0 disables periodic flushing (maximum performance, but data
- * may be lost on crash). Setting it higher reduces I/O blocking but increases
- * the amount of data at risk.
+ * Setting this to 0 disables periodic flushing.
+ * They rely on OS buffering during operation and only sync on shutdown.
  *
  * Calculation:
  * - Buffer size = 64KB per flush
@@ -40,14 +39,15 @@ extern "C" {
  * - Example: 100 flushes = 6.4MB at risk
  *
  * Recommended values:
- * - 0: Maximum performance, no durability (not recommended for production)
+ * - 0: Maximum performance, relies on OS buffering
  * - 10-50: Aggressive flushing, ~640KB-3.2MB at risk
- * - 100-200: Good balance, ~6.4MB-12.8MB at risk (default)
+ * - 100-200: Good balance, ~6.4MB-12.8MB at risk
  * - 500+: Maximum performance, more data at risk
  *
  * Note: Using flush count instead of time avoids time() syscalls in hot path.
+ * Current setting: 0 (no periodic flushing for maximum performance)
  */
-#define BINARY_WRITER_PERIODIC_FLUSH_COUNT 100
+#define BINARY_WRITER_PERIODIC_FLUSH_COUNT 0
 
 /* ============================================================================
  * Types

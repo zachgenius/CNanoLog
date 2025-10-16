@@ -62,7 +62,7 @@ static uint64_t g_timestamp_frequency = 0;  /* CPU frequency (Hz) for rdtsc() */
  * Global Statistics Tracking
  * ============================================================================ */
 
-#ifndef CNANOLOG_NO_TIMESTAMPS
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
 static struct {
     volatile uint64_t total_logs;            /* Logs written by threads */
     volatile uint64_t dropped_logs;          /* Logs dropped (buffer full) */
@@ -308,14 +308,14 @@ void _cnanolog_log_binary(uint32_t log_id,
     }
 
     /* Track statistics: log written */
-#ifndef CNANOLOG_NO_TIMESTAMPS
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
     g_stats.total_logs++;
 #endif
 
     /* Get thread-local staging buffer (lazy initialization, no lock!) */
     staging_buffer_t* sb = get_or_create_staging_buffer();
     if (sb == NULL) {
-#ifndef CNANOLOG_NO_TIMESTAMPS
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
         g_stats.dropped_logs++;
 #endif
         return;  /* Failed to allocate buffer */
@@ -330,7 +330,7 @@ void _cnanolog_log_binary(uint32_t log_id,
     char* write_ptr = staging_reserve(sb, max_entry_size);
     if (write_ptr == NULL) {
         /* Buffer full, drop log */
-#ifndef CNANOLOG_NO_TIMESTAMPS
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
         g_stats.dropped_logs++;
 #endif
         return;
@@ -357,7 +357,7 @@ void _cnanolog_log_binary(uint32_t log_id,
         if (arg_data_size == 0) {
             /* Packing failed (buffer too small or error) - give back all reserved space */
             staging_adjust_reservation(sb, max_entry_size, 0);
-#ifndef CNANOLOG_NO_TIMESTAMPS
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
             g_stats.dropped_logs++;
 #endif
             return;
@@ -396,7 +396,7 @@ static void* writer_thread_main(void* arg) {
         int found_work = 0;
 
         /* Track background thread activity */
-#ifndef CNANOLOG_NO_TIMESTAMPS
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
         g_stats.background_wakeups++;
 #endif
 
@@ -468,7 +468,7 @@ static void* writer_thread_main(void* arg) {
                         data_len_to_write = (uint16_t)compressed_len;
 
                         /* Track compression statistics */
-#ifndef CNANOLOG_NO_TIMESTAMPS
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
                         g_stats.bytes_compressed_from += header->data_length;
                         g_stats.bytes_compressed_to += compressed_len;
 #endif
@@ -640,7 +640,7 @@ void cnanolog_get_stats(cnanolog_stats_t* stats) {
         return;
     }
 
-#ifndef CNANOLOG_NO_TIMESTAMPS
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
     /* Read counters (volatile reads for thread safety) */
     stats->total_logs_written = g_stats.total_logs;
     stats->dropped_logs = g_stats.dropped_logs;
@@ -670,7 +670,7 @@ void cnanolog_get_stats(cnanolog_stats_t* stats) {
 }
 
 void cnanolog_reset_stats(void) {
-#ifndef CNANOLOG_NO_TIMESTAMPS
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
     /* Reset all counters to zero */
     g_stats.total_logs = 0;
     g_stats.dropped_logs = 0;

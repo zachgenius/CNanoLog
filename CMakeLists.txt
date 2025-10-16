@@ -14,6 +14,7 @@ set(CMAKE_CXX_STANDARD 11)
 # ============================================================================
 
 option(CNANOLOG_ENABLE_TIMESTAMPS "Enable high-resolution timestamps (rdtsc). Disable for maximum throughput." ON)
+option(CNANOLOG_ENABLE_STATISTICS "Enable runtime statistics tracking (logs written, dropped, etc). Only works when timestamps enabled." ON)
 
 # ============================================================================
 # Build Type and Optimization Flags
@@ -101,8 +102,17 @@ target_include_directories(cnanolog
 if(NOT CNANOLOG_ENABLE_TIMESTAMPS)
     target_compile_definitions(cnanolog PUBLIC CNANOLOG_NO_TIMESTAMPS)
     message(STATUS "Timestamps: DISABLED (extreme performance mode)")
+    message(STATUS "Statistics: DISABLED (requires timestamps)")
 else()
     message(STATUS "Timestamps: ENABLED (rdtsc high-resolution)")
+
+    # Statistics only work when timestamps are enabled
+    if(NOT CNANOLOG_ENABLE_STATISTICS)
+        target_compile_definitions(cnanolog PUBLIC CNANOLOG_NO_STATISTICS)
+        message(STATUS "Statistics: DISABLED")
+    else()
+        message(STATUS "Statistics: ENABLED (tracking logs written, dropped, etc)")
+    endif()
 endif()
 
 # Add platform-specific dependencies

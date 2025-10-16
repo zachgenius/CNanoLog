@@ -24,39 +24,18 @@ extern "C" {
 /**
  * Size of internal write buffer.
  *
- * Larger buffers reduce flush frequency and improve tail latency:
- * - 64KB:  Good for memory-constrained systems (more frequent flushes)
- * - 512KB: Balanced (recommended for most use cases)
- * - 4MB:   Better tail latency (fewer aio_write() calls)
- * - 16MB:  Best tail latency (matches high-performance systems)
+ * NanoLog uses 64MB and achieves p99.9 = 702ns.
+ * Large buffer = very infrequent flushes = excellent tail latency.
  *
- * Trade-off: Memory usage = BINARY_WRITER_BUFFER_SIZE * 2 (double buffering)
- * NanoLog uses 64MB buffer and achieves p99.9 = 702ns
+ * Memory usage: BINARY_WRITER_BUFFER_SIZE * 2 (double buffering for AIO)
+ * Total: 128MB (2 x 64MB buffers)
  */
-#define BINARY_WRITER_BUFFER_SIZE (4 * 1024 * 1024)  // 4MB (8MB total with double buffer)
+#define BINARY_WRITER_BUFFER_SIZE (64 * 1024 * 1024)  // 64MB (128MB total)
 
 /**
  * Periodic flush interval (flush count).
- *
- * The binary writer will call fflush() once every N buffer flushes to ensure
- * data durability while maintaining high performance during bursts.
- *
- * Setting this to 0 disables periodic flushing.
- * They rely on OS buffering during operation and only sync on shutdown.
- *
- * Calculation:
- * - Buffer size = 64KB per flush
- * - Flush every N flushes = N * 64KB of data at risk
- * - Example: 100 flushes = 6.4MB at risk
- *
- * Recommended values:
- * - 0: Maximum performance, relies on OS buffering
- * - 10-50: Aggressive flushing, ~640KB-3.2MB at risk
- * - 100-200: Good balance, ~6.4MB-12.8MB at risk
- * - 500+: Maximum performance, more data at risk
- *
- * Note: Using flush count instead of time avoids time() syscalls in hot path.
- * Current setting: 0 (no periodic flushing for maximum performance)
+ * Setting this to 0 disables periodic flushing (maximum performance).
+ * Current setting: 0 (relies on OS buffering, sync on shutdown only)
  */
 #define BINARY_WRITER_PERIODIC_FLUSH_COUNT 0
 

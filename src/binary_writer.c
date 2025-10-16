@@ -98,21 +98,18 @@ static int async_flush_buffer(binary_writer_t* writer) {
     }
 
 #if defined(__linux__)
-    /* Linux: Use POSIX AIO (well supported) */
-
-    /* Wait for any previous AIO to complete before reusing buffer */
+    /* Wait for any previous AIO to complete before starting new write */
     if (wait_for_aio(writer) != 0) {
         return -1;
     }
 
-    /* Setup AIO control block */
+    /* Start async write of current buffer */
     memset(&writer->aiocb, 0, sizeof(writer->aiocb));
     writer->aiocb.aio_fildes = writer->fd;
     writer->aiocb.aio_buf = writer->buffers[writer->active_buffer_idx];
     writer->aiocb.aio_nbytes = writer->buffer_used;
     writer->aiocb.aio_offset = writer->bytes_written;
 
-    /* Initiate async write (returns immediately!) */
     if (aio_write(&writer->aiocb) == -1) {
         fprintf(stderr, "binwriter: aio_write failed: %s\n", strerror(errno));
         return -1;
@@ -129,8 +126,6 @@ static int async_flush_buffer(binary_writer_t* writer) {
 
 #else
     /* macOS/Windows: Fallback to synchronous write() */
-    /* macOS POSIX AIO has severe limitations and is not production-ready */
-
     ssize_t written = write(writer->fd, writer->buffers[writer->active_buffer_idx],
                            writer->buffer_used);
     if (written != (ssize_t)writer->buffer_used) {
@@ -383,17 +378,6 @@ int binwriter_flush(binary_writer_t* writer) {
         return -1;
     }
 
-    /*
-     * Async flush using POSIX AIO.
-     *
-     * Key benefits:
-     * - aio_write() returns IMMEDIATELY (non-blocking)
-     * - Background thread never blocks on I/O
-     * - No cache coherency delays when producers write to atomic `committed`
-     * - Kernel handles I/O in background
-     *
-     * This eliminates the 3000-5000ns spikes caused by fwrite() blocking.
-     */
     return async_flush_buffer(writer);
 }
 
@@ -415,7 +399,6 @@ int binwriter_close(binary_writer_t* writer,
     }
 
     /* Dictionary starts at current write position */
-    /* Note: We use bytes_written instead of ftell() because we write via fd, not fp */
     uint64_t dict_offset = writer->bytes_written;
 
     /* Write dictionary header */
@@ -453,12 +436,7 @@ int binwriter_close(binary_writer_t* writer,
         goto cleanup_error;
     }
 
-    /*
-     * Now use FILE* operations for header update (random access).
-     * Note: fp and fd point to the same file, but they have independent buffers.
-     * We need to position fp correctly after all fd writes.
-     */
-
+    /* Use FILE* for header update (random access to beginning of file) */
     /* Seek to beginning to read/update header */
     if (fseek(writer->fp, 0, SEEK_SET) != 0) {
         fprintf(stderr, "binwriter_close: fseek failed: %s\n", strerror(errno));

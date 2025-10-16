@@ -24,19 +24,7 @@
 
 /**
  * Batch processing configuration for background writer.
- *
- * The background writer flushes when:
- * 1. FLUSH_BATCH_SIZE entries written, OR
- * 2. FLUSH_INTERVAL_MS milliseconds elapsed, OR
- * 3. No more work found (buffer empty)
- *
- * Tuning for different scenarios:
- * - High throughput/burst: FLUSH_BATCH_SIZE=2000, INTERVAL=200ms (more buffering, fewer flushes)
- * - Low latency: FLUSH_BATCH_SIZE=10, INTERVAL=10ms (less buffering, more flushes)
- * - Balanced (default): FLUSH_BATCH_SIZE=1000, INTERVAL=100ms
- *
- * Benchmark optimized: Higher batch size to reduce flush frequency under heavy load.
- * Prevents log drops during burst scenarios where tons of logs arrive in short time.
+ * Flushes when: FLUSH_BATCH_SIZE entries OR FLUSH_INTERVAL_MS elapsed OR buffer empty.
  */
 #define FLUSH_BATCH_SIZE 2000          /* Flush every N entries */
 #define FLUSH_INTERVAL_MS 200          /* OR flush every N milliseconds */
@@ -82,15 +70,6 @@ static struct {
 
 /**
  * Lock-free buffer registry using atomic operations.
- *
- * Performance optimization:
- * - Old: Mutex lock on first log from each thread (50-500ns spike)
- * - New: Atomic operations only (< 10ns overhead)
- *
- * Thread safety:
- * - count: Atomic fetch-and-add ensures unique indices
- * - buffers[i]: Atomic store with release semantics ensures visibility
- * - Background thread uses acquire semantics to see all previous writes
  */
 typedef struct {
     staging_buffer_t* buffers[MAX_STAGING_BUFFERS];
@@ -334,17 +313,14 @@ void _cnanolog_log_binary(uint32_t log_id,
                           uint8_t num_args,
                           const uint8_t* arg_types,
                           ...) {
-    /* Fast path: almost always initialized and log_id is valid */
     if (unlikely(!g_is_initialized || log_id == UINT32_MAX)) {
         return;
     }
 
-    /* Track statistics: log written */
 #if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
     g_stats.total_logs++;
 #endif
 
-    /* Get thread-local staging buffer (lazy initialization, no lock!) */
     staging_buffer_t* sb = get_or_create_staging_buffer();
     if (unlikely(sb == NULL)) {
 #if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
@@ -356,21 +332,18 @@ void _cnanolog_log_binary(uint32_t log_id,
     size_t max_entry_size = MAX_LOG_ENTRY_SIZE;
     char* write_ptr = staging_reserve(sb, max_entry_size);
     if (unlikely(write_ptr == NULL)) {
-        /* Buffer full, drop log */
 #if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
         g_stats.dropped_logs++;
 #endif
         return;
     }
 
-    /* Write entry header (we'll update data_length after packing) */
     cnanolog_entry_header_t* header = (cnanolog_entry_header_t*)write_ptr;
     header->log_id = log_id;
 #ifndef CNANOLOG_NO_TIMESTAMPS
     header->timestamp = get_timestamp();
 #endif
 
-    /* Pack arguments in SINGLE PASS (calculates size while packing) */
     size_t arg_data_size = 0;
     if (num_args > 0) {
         va_list args;
@@ -382,7 +355,6 @@ void _cnanolog_log_binary(uint32_t log_id,
         va_end(args);
 
         if (unlikely(arg_data_size == 0)) {
-            /* Packing failed (buffer too small or error) - give back all reserved space */
             staging_adjust_reservation(sb, max_entry_size, 0);
 #if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
             g_stats.dropped_logs++;
@@ -390,17 +362,12 @@ void _cnanolog_log_binary(uint32_t log_id,
             return;
         }
     }
-    /* If num_args == 0, arg_data_size stays 0 (valid case) */
 
-    /* Update header with actual size */
     header->data_length = (uint16_t)arg_data_size;
     size_t actual_entry_size = sizeof(cnanolog_entry_header_t) + arg_data_size;
 
-    /* Adjust reservation to actual size and commit */
     staging_adjust_reservation(sb, max_entry_size, actual_entry_size);
     staging_commit(sb, actual_entry_size);
-
-    /* No need to signal - background thread polls all buffers */
 }
 
 /* ============================================================================
@@ -422,19 +389,15 @@ static void* writer_thread_main(void* arg) {
     while (!g_should_exit) {
         int found_work = 0;
 
-        /* Track background thread activity */
 #if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
         g_stats.background_wakeups++;
 #endif
 
-        /* Get current number of buffers (lock-free read) */
         size_t num_buffers = g_buffer_registry.count;
 
-        /* Round-robin through all staging buffers */
         for (size_t i = 0; i < num_buffers; i++) {
             size_t idx = (last_checked_idx + i) % num_buffers;
 
-            /* Get buffer with atomic load (acquire semantics for visibility) */
 #if defined(__GNUC__) || defined(__clang__)
             staging_buffer_t* sb = __atomic_load_n(&g_buffer_registry.buffers[idx], __ATOMIC_ACQUIRE);
 #else
@@ -444,57 +407,44 @@ static void* writer_thread_main(void* arg) {
                 continue;
             }
 
-            /* Check if data is available */
             size_t available = staging_available(sb);
             if (available == 0) {
-                continue;  /* Buffer is empty, try next */
+                continue;
             }
 
-            /* Process entries from this buffer one at a time */
             while (staging_available(sb) >= sizeof(cnanolog_entry_header_t)) {
-                /* Peek at header to determine entry size */
                 size_t nread = staging_read(sb, temp_buf, sizeof(cnanolog_entry_header_t));
                 if (nread < sizeof(cnanolog_entry_header_t)) {
-                    break;  /* Not enough data for header */
+                    break;
                 }
 
-                /* Parse entry header to get total size */
                 cnanolog_entry_header_t* header = (cnanolog_entry_header_t*)temp_buf;
 
-                /* Check for wrap marker (circular buffer wrap-around) */
                 if (header->log_id == STAGING_WRAP_MARKER_LOG_ID) {
-                    /* This is a wrap marker - consumer should wrap to beginning */
                     staging_consume(sb, sizeof(cnanolog_entry_header_t));
                     staging_wrap_read_pos(sb);
-                    continue;  /* Continue processing from beginning */
+                    continue;
                 }
 
                 size_t entry_size = sizeof(cnanolog_entry_header_t) + header->data_length;
 
-                /* Check if we have the full entry available */
                 if (staging_available(sb) < entry_size) {
-                    break;  /* Don't have complete entry yet, wait for more data */
+                    break;
                 }
 
-                /* Now read the complete entry (staging_read is a peek, so we read from start again) */
                 nread = staging_read(sb, temp_buf, entry_size);
                 if (nread < entry_size) {
-                    break;  /* Couldn't read full entry */
+                    break;
                 }
 
-                /* Reparse header from full entry */
                 header = (cnanolog_entry_header_t*)temp_buf;
-
-                /* Get log site info for compression */
                 const log_site_t* site = log_registry_get(&g_registry, header->log_id);
 
-                /* Compress argument data */
                 size_t compressed_len = 0;
                 const char* data_to_write;
                 uint16_t data_len_to_write;
 
                 if (site != NULL && site->num_args > 0) {
-                    /* Compress the argument data */
                     int compress_result = compress_entry_args(
                         temp_buf + sizeof(cnanolog_entry_header_t),
                         header->data_length,
@@ -503,27 +453,21 @@ static void* writer_thread_main(void* arg) {
                         site);
 
                     if (compress_result == 0) {
-                        /* Compression succeeded */
                         data_to_write = compressed_buf;
                         data_len_to_write = (uint16_t)compressed_len;
-
-                        /* Track compression statistics */
 #if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
                         g_stats.bytes_compressed_from += header->data_length;
                         g_stats.bytes_compressed_to += compressed_len;
 #endif
                     } else {
-                        /* Compression failed, write uncompressed */
                         data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
                         data_len_to_write = header->data_length;
                     }
                 } else {
-                    /* No arguments or invalid site, write uncompressed */
                     data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
                     data_len_to_write = header->data_length;
                 }
 
-                /* Write to binary file (compressed or uncompressed) */
                 binwriter_write_entry(g_binary_writer,
                                     header->log_id,
 #ifndef CNANOLOG_NO_TIMESTAMPS
@@ -534,24 +478,16 @@ static void* writer_thread_main(void* arg) {
                                     data_to_write,
                                     data_len_to_write);
 
-                /* Mark this entry as consumed */
                 staging_consume(sb, entry_size);
-
                 entries_since_flush++;
                 found_work = 1;
             }
         }
 
-        /* Update round-robin position */
         if (num_buffers > 0) {
             last_checked_idx = (last_checked_idx + 1) % num_buffers;
         }
 
-        /*
-         * Batch flush strategy:
-         * Flush when we've written N entries OR when enough time has passed (if timestamps enabled).
-         * This reduces flush frequency while ensuring data doesn't sit too long.
-         */
 #ifndef CNANOLOG_NO_TIMESTAMPS
         uint64_t now = get_timestamp();
         uint64_t elapsed_ns = now - last_flush_time;
@@ -561,25 +497,18 @@ static void* writer_thread_main(void* arg) {
             elapsed_ms >= FLUSH_INTERVAL_MS ||
             (entries_since_flush > 0 && !found_work)) {
 #else
-        /* Without timestamps, flush based on entry count only */
         if (entries_since_flush >= FLUSH_BATCH_SIZE ||
             (entries_since_flush > 0 && !found_work)) {
 #endif
-            /* Flush to disk */
             binwriter_flush(g_binary_writer);
-
             entries_since_flush = 0;
 #ifndef CNANOLOG_NO_TIMESTAMPS
             last_flush_time = now;
 #endif
         }
 
-        /* If no work was found, sleep briefly to avoid spinning */
         if (!found_work) {
-            /* Sleep for 100 microseconds */
-            struct timespec ts;
-            ts.tv_sec = 0;
-            ts.tv_nsec = 100000;  /* 100us */
+            struct timespec ts = {0, 100000};  /* 100us */
             nanosleep(&ts, NULL);
         }
     }
@@ -591,39 +520,23 @@ static void* writer_thread_main(void* arg) {
  * Buffer Registry Implementation
  * ============================================================================ */
 
-/**
- * Initialize lock-free buffer registry.
- * No mutex needed - uses atomic operations for thread safety.
- */
 static void buffer_registry_init(buffer_registry_t* registry) {
     memset(registry->buffers, 0, sizeof(registry->buffers));
     registry->count = 0;
 }
 
-/**
- * Lock-free buffer registry add operation.
- *
- * Uses atomic fetch-and-add to claim a unique slot, then stores
- * the buffer pointer with release semantics for visibility.
- *
- * Thread-safe: Multiple threads can register simultaneously
- */
 static int buffer_registry_add(buffer_registry_t* registry, staging_buffer_t* buffer) {
-    /* Atomically claim a slot - this is lock-free! */
 #if defined(__GNUC__) || defined(__clang__)
     uint32_t idx = __atomic_fetch_add(&registry->count, 1, __ATOMIC_SEQ_CST);
 #else
-    /* Fallback for compilers without atomics (not thread-safe) */
     uint32_t idx = registry->count++;
 #endif
 
-    /* Check if we exceeded capacity */
     if (unlikely(idx >= MAX_STAGING_BUFFERS)) {
         fprintf(stderr, "cnanolog: Buffer registry full (max %d threads)\n", MAX_STAGING_BUFFERS);
         return -1;
     }
 
-    /* Store buffer pointer with release semantics */
 #if defined(__GNUC__) || defined(__clang__)
     __atomic_store_n(&registry->buffers[idx], buffer, __ATOMIC_RELEASE);
 #else
@@ -637,44 +550,30 @@ static int buffer_registry_add(buffer_registry_t* registry, staging_buffer_t* bu
  * Thread-Local Buffer Management
  * ============================================================================ */
 
-/**
- * Get or create the thread-local staging buffer.
- * This is called on the first log from each thread.
- * Subsequent calls return the cached pointer (very fast).
- */
 static staging_buffer_t* get_or_create_staging_buffer(void) {
-    /* Fast path: buffer already exists */
     if (tls_staging_buffer != NULL) {
         return tls_staging_buffer;
     }
 
-    /* Slow path: allocate new buffer (first log from this thread) */
-
-    /* Generate thread ID */
 #if defined(__GNUC__) || defined(__clang__)
     uint32_t thread_id = __atomic_fetch_add(&g_next_thread_id, 1, __ATOMIC_SEQ_CST);
 #else
-    /* Fallback: not thread-safe but better than nothing */
     uint32_t thread_id = g_next_thread_id++;
 #endif
 
-    /* Create staging buffer */
     staging_buffer_t* sb = staging_buffer_create(thread_id);
     if (sb == NULL) {
         fprintf(stderr, "cnanolog: Failed to allocate staging buffer for thread %u\n", thread_id);
         return NULL;
     }
 
-    /* Register with global registry */
     if (buffer_registry_add(&g_buffer_registry, sb) != 0) {
-        fprintf(stderr, "cnanolog: Failed to register staging buffer (max threads exceeded)\n");
+        fprintf(stderr, "cnanolog: Failed to register staging buffer\n");
         staging_buffer_destroy(sb);
         return NULL;
     }
 
-    /* Cache in thread-local storage */
     tls_staging_buffer = sb;
-
     return sb;
 }
 
@@ -683,11 +582,8 @@ static staging_buffer_t* get_or_create_staging_buffer(void) {
  * ============================================================================ */
 
 #ifndef CNANOLOG_NO_TIMESTAMPS
-/**
- * Get current timestamp using rdtsc (Phase 5: High-resolution timestamps).
- */
 static uint64_t get_timestamp(void) {
-    return rdtsc();  /* ~5-10ns overhead */
+    return rdtsc();
 }
 #endif
 
@@ -701,37 +597,31 @@ void cnanolog_get_stats(cnanolog_stats_t* stats) {
     }
 
 #if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
-    /* Read counters (volatile reads for thread safety) */
     stats->total_logs_written = g_stats.total_logs;
     stats->dropped_logs = g_stats.dropped_logs;
     stats->background_wakeups = g_stats.background_wakeups;
 
-    /* Get bytes written from binary writer */
     if (g_binary_writer != NULL) {
         stats->total_bytes_written = binwriter_get_bytes_written(g_binary_writer);
     } else {
         stats->total_bytes_written = 0;
     }
 
-    /* Calculate compression ratio */
     if (g_stats.bytes_compressed_from > 0) {
         stats->compression_ratio_x100 =
             (g_stats.bytes_compressed_from * 100) / g_stats.bytes_compressed_to;
     } else {
-        stats->compression_ratio_x100 = 100;  /* 1.00x (no compression yet) */
+        stats->compression_ratio_x100 = 100;
     }
 
-    /* Count active staging buffers */
     stats->staging_buffers_active = g_buffer_registry.count;
 #else
-    /* Statistics disabled in extreme performance mode */
     memset(stats, 0, sizeof(*stats));
 #endif
 }
 
 void cnanolog_reset_stats(void) {
 #if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
-    /* Reset all counters to zero */
     g_stats.total_logs = 0;
     g_stats.dropped_logs = 0;
     g_stats.bytes_written = 0;
@@ -742,15 +632,10 @@ void cnanolog_reset_stats(void) {
 }
 
 void cnanolog_preallocate(void) {
-    /* Force allocation of thread-local buffer */
     staging_buffer_t* sb = get_or_create_staging_buffer();
-    (void)sb;  /* Suppress unused warning */
+    (void)sb;
 }
 
-/**
- * Set CPU affinity for the background writer thread.
- * See cnanolog.h for full documentation.
- */
 int cnanolog_set_writer_affinity(int core_id) {
     if (!g_is_initialized) {
         fprintf(stderr, "cnanolog_set_writer_affinity: Logger not initialized\n");
@@ -762,14 +647,5 @@ int cnanolog_set_writer_affinity(int core_id) {
         return -1;
     }
 
-    /* Call platform-specific affinity function */
-    int result = cnanolog_thread_set_affinity(g_writer_thread, core_id);
-
-    if (result == 0) {
-        /* Success - affinity set */
-        return 0;
-    } else {
-        /* Failed - warning already printed by platform layer */
-        return -1;
-    }
+    return cnanolog_thread_set_affinity(g_writer_thread, core_id);
 }

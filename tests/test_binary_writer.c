@@ -263,11 +263,11 @@ int test_buffer_flush() {
     /* Write many entries to trigger buffer flush */
     /* With timestamps: 14-byte header + 4-byte data = 18 bytes per entry
      * Without timestamps: 6-byte header + 4-byte data = 10 bytes per entry
-     * Buffer size is 64KB, so we need more entries without timestamps */
+     * Buffer size is 64MB, so we need enough entries to exceed that */
 #ifndef CNANOLOG_NO_TIMESTAMPS
-    int num_entries = 5000;  /* 5000 * 18 = 90KB > 64KB */
+    int num_entries = 4000000;  /* 4M * 18 = 72MB > 64MB */
 #else
-    int num_entries = 8000;  /* 8000 * 10 = 80KB > 64KB */
+    int num_entries = 7000000;  /* 7M * 10 = 70MB > 64MB */
 #endif
     for (int i = 0; i < num_entries; i++) {
         int32_t val = i;

@@ -28,20 +28,9 @@ extern "C" {
  * ============================================================================ */
 
 /**
- * Staging buffer size per thread.
- *
- * Tuning guidelines:
- * - 1MB (default): Good for steady logging, ~250K logs buffered
- * - 4MB: Good for moderate bursts, ~1M logs buffered
- * - 8MB: Good for heavy bursts, ~2M logs buffered
- * - 16MB: For extreme burst scenarios (benchmark optimized)
- * - 32MB+: Very high memory usage, may cause allocation issues
- *
- * Trade-offs:
- * - Larger = more memory per thread, but fewer drops during bursts
- * - Memory usage = STAGING_BUFFER_SIZE × number of logging threads
- *
- * For burst logging scenarios with many strings, 16MB is recommended.
+ * Staging buffer size per thread (12MB default).
+ * Larger size = better burst handling but more memory per thread.
+ * Memory usage = STAGING_BUFFER_SIZE × number of logging threads
  */
 #define STAGING_BUFFER_SIZE (12 * 1024 * 1024)
 
@@ -61,41 +50,10 @@ extern "C" {
 
 /**
  * Thread-local staging buffer for lock-free logging.
+ * Single-producer, single-consumer model with cache-line optimization.
  *
- * Memory Model:
- *   [======= committed =======][--- reserved ---][------- free -------]
- *   ^                          ^                  ^
- *   read_pos                   committed          write_pos
- *
- * Producer (logging thread):
- *   - Increments write_pos to reserve space (no lock, non-atomic)
- *   - Writes data
- *   - Updates committed atomically (with release semantics)
- *
- * Consumer (background thread):
- *   - Reads atomic committed (with acquire semantics)
- *   - Reads from read_pos up to committed
- *   - Increments read_pos after consuming
- *
- * Note: Single-producer, single-consumer model (one thread writes, background thread reads)
- *
- * Cache-Line Optimization (IMPROVED):
- *   Fields are carefully placed to minimize false sharing:
- *   - Producer cache line: write_pos (only producer touches)
- *   - (128-byte padding for separation)
- *   - Consumer-dominated cache line: committed (atomic, producer writes rarely, consumer reads frequently)
- *   - Consumer cache line: read_pos (only consumer touches)
- *
- *   Key insight: committed is written by producer but read by consumer frequently.
- *   Placing it near read_pos means it's likely in consumer's cache. Producer only
- *   writes it occasionally (on commit), so cache line transfers are minimized.
- *
- * Atomic Synchronization:
- *   - Producer uses atomic_store with memory_order_release on committed
- *   - Consumer uses atomic_load with memory_order_acquire on committed
- *   - write_pos remains non-atomic (only producer accesses it)
- *   - This reduces cache line transfers compared to old design where committed
- *     was on a separate cache line between producer and consumer
+ * Producer: Reserves space (write_pos), writes data, commits atomically.
+ * Consumer: Reads committed entries (read_pos to committed), consumes data.
  */
 typedef struct ALIGN_CACHELINE {
     /* Buffer storage - naturally aligned at start */
@@ -148,44 +106,29 @@ void staging_buffer_destroy(staging_buffer_t* sb);
  * ============================================================================ */
 
 /**
- * Reserve space in the staging buffer for writing.
- * This operation is lock-free and O(1).
+ * Reserve space in the staging buffer for writing (lock-free, O(1)).
  *
  * @param sb Staging buffer
  * @param nbytes Number of bytes to reserve
  * @return Pointer to reserved space, or NULL if buffer is full
- *
- * Usage:
- *   char* ptr = staging_reserve(sb, 100);
- *   if (ptr) {
- *       memcpy(ptr, data, 100);
- *       staging_commit(sb, 100);
- *   }
  */
 char* staging_reserve(staging_buffer_t* sb, size_t nbytes);
 
 /**
- * Commit previously reserved space.
- * Makes the data visible to the consumer (background thread).
- * Uses atomic store with release semantics to ensure all writes complete.
+ * Commit previously reserved space (makes data visible to consumer).
+ * Uses atomic store with release semantics.
  *
  * @param sb Staging buffer
  * @param nbytes Number of bytes to commit (must match staging_reserve)
- *
- * Note: Must be called after staging_reserve() with the same nbytes value.
- *       This performs an atomic store with memory_order_release on write_pos.
  */
 void staging_commit(staging_buffer_t* sb, size_t nbytes);
 
 /**
  * Adjust reservation before commit (if you reserved more than needed).
- * This allows optimistic reservation with post-facto adjustment.
  *
  * @param sb Staging buffer
  * @param reserved_bytes Original reserved amount
  * @param actual_bytes Actual amount used
- *
- * Note: Must be called AFTER staging_reserve() but BEFORE staging_commit().
  */
 void staging_adjust_reservation(staging_buffer_t* sb, size_t reserved_bytes, size_t actual_bytes);
 
@@ -202,22 +145,18 @@ void staging_adjust_reservation(staging_buffer_t* sb, size_t reserved_bytes, siz
 size_t staging_available(const staging_buffer_t* sb);
 
 /**
- * Read data from the staging buffer without consuming it.
- * This is a "peek" operation - the data remains in the buffer until
- * staging_consume() is called.
+ * Read data from the staging buffer without consuming it (peek operation).
+ * Data remains in buffer until staging_consume() is called.
  *
  * @param sb Staging buffer
  * @param out Output buffer to copy data into
  * @param max_len Maximum bytes to read
  * @return Number of bytes actually read
- *
- * Note: Data remains in buffer until staging_consume() is called.
  */
 size_t staging_read(staging_buffer_t* sb, char* out, size_t max_len);
 
 /**
  * Mark bytes as consumed, freeing space in the buffer.
- * Should be called after staging_read() and processing the data.
  *
  * @param sb Staging buffer
  * @param nbytes Number of bytes to mark as consumed
@@ -226,11 +165,7 @@ void staging_consume(staging_buffer_t* sb, size_t nbytes);
 
 /**
  * Wrap read_pos to beginning of buffer.
- * This should be called by the consumer when it detects a wrap marker
- * (entry with log_id == STAGING_WRAP_MARKER_LOG_ID).
- *
- * The wrap marker is written by the producer when it needs to wrap around
- * due to insufficient space at the end of the buffer.
+ * Called by consumer when it detects a wrap marker (log_id == STAGING_WRAP_MARKER_LOG_ID).
  *
  * @param sb Staging buffer
  */
@@ -238,7 +173,6 @@ void staging_wrap_read_pos(staging_buffer_t* sb);
 
 /**
  * Reset the staging buffer to empty state.
- * Useful for testing or error recovery.
  *
  * @param sb Staging buffer
  */

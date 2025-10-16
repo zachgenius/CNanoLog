@@ -162,16 +162,16 @@ void test_arg_type_array() {
     int x = 10;
     const char* name = "test";
 
-    /* Build type array */
-    uint8_t* types1 = CNANOLOG_ARG_TYPES(x);
+    /* Build type array - use array declaration, not pointer assignment */
+    uint8_t types1[] = CNANOLOG_ARG_TYPES(x);
     assert(types1[0] == ARG_TYPE_INT32);
 
-    uint8_t* types2 = CNANOLOG_ARG_TYPES(x, name);
+    uint8_t types2[] = CNANOLOG_ARG_TYPES(x, name);
     assert(types2[0] == ARG_TYPE_INT32);
     assert(types2[1] == ARG_TYPE_STRING);
 
     double val = 3.14;
-    uint8_t* types3 = CNANOLOG_ARG_TYPES(x, name, val);
+    uint8_t types3[] = CNANOLOG_ARG_TYPES(x, name, val);
     assert(types3[0] == ARG_TYPE_INT32);
     assert(types3[1] == ARG_TYPE_STRING);
     assert(types3[2] == ARG_TYPE_DOUBLE);

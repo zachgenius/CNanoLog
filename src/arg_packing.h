@@ -79,6 +79,18 @@ static inline size_t arg_pack_write_fast(char* buffer, size_t buffer_size,
                 }
                 break;
             }
+            case ARG_TYPE_STRING_WITH_LEN: {
+                const char* str = va_arg(args, const char*);
+                uint32_t len = va_arg(args, uint32_t);  /* Pre-calculated, no strlen! */
+                if (write_ptr + sizeof(len) + len > buffer_end) return 0;
+                memcpy(write_ptr, &len, sizeof(len));
+                write_ptr += sizeof(len);
+                if (len > 0 && str != NULL) {
+                    memcpy(write_ptr, str, len);
+                    write_ptr += len;
+                }
+                break;
+            }
             case ARG_TYPE_POINTER: {
                 void* ptr = va_arg(args, void*);
                 uint64_t val = (uint64_t)ptr;

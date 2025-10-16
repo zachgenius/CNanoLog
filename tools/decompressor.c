@@ -293,6 +293,7 @@ static int decompress_entry_args(const char* compressed,
             }
 
             case ARG_TYPE_STRING:
+            case ARG_TYPE_STRING_WITH_LEN:
                 /* Skip - strings handled in pass 2 */
                 break;
 
@@ -359,8 +360,9 @@ static int decompress_entry_args(const char* compressed,
                 break;
             }
 
-            case ARG_TYPE_STRING: {
-                /* Read and write string from compressed stream */
+            case ARG_TYPE_STRING:
+            case ARG_TYPE_STRING_WITH_LEN: {
+                /* Both types serialize identically: [length][data] */
                 if (read_ptr + sizeof(uint32_t) > end_ptr) return -1;
 
                 uint32_t str_len;
@@ -475,7 +477,8 @@ static void format_log_message(decompressor_ctx_t* ctx, dict_entry_t* dict,
                                          "%f", val);
                     break;
                 }
-                case ARG_TYPE_STRING: {
+                case ARG_TYPE_STRING:
+                case ARG_TYPE_STRING_WITH_LEN: {
                     uint32_t str_len;
                     memcpy(&str_len, read_ptr, sizeof(str_len));
                     read_ptr += sizeof(str_len);

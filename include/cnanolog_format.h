@@ -48,8 +48,9 @@ typedef enum {
     ARG_TYPE_UINT32  = 3,   /* uint32_t, unsigned int */
     ARG_TYPE_UINT64  = 4,   /* uint64_t, unsigned long */
     ARG_TYPE_DOUBLE  = 5,   /* double, float (promoted) */
-    ARG_TYPE_STRING  = 6,   /* char*, const char* */
+    ARG_TYPE_STRING  = 6,   /* char*, const char* (calls strlen on hot path) */
     ARG_TYPE_POINTER = 7,   /* void*, any pointer type */
+    ARG_TYPE_STRING_WITH_LEN = 8,  /* char* + uint32_t length (optimized, no strlen) */
 } cnanolog_arg_type_t;
 
 /* ============================================================================

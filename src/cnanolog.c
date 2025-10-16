@@ -62,6 +62,7 @@ static uint64_t g_timestamp_frequency = 0;  /* CPU frequency (Hz) for rdtsc() */
  * Global Statistics Tracking
  * ============================================================================ */
 
+#ifndef CNANOLOG_NO_TIMESTAMPS
 static struct {
     volatile uint64_t total_logs;            /* Logs written by threads */
     volatile uint64_t dropped_logs;          /* Logs dropped (buffer full) */
@@ -70,6 +71,7 @@ static struct {
     volatile uint64_t bytes_compressed_to;   /* Compressed size */
     volatile uint64_t background_wakeups;    /* Background thread wakeups */
 } g_stats = {0, 0, 0, 0, 0, 0};
+#endif
 
 /* ============================================================================
  * Global Buffer Registry (for background thread to find all buffers)
@@ -306,60 +308,70 @@ void _cnanolog_log_binary(uint32_t log_id,
     }
 
     /* Track statistics: log written */
+#ifndef CNANOLOG_NO_TIMESTAMPS
     g_stats.total_logs++;
+#endif
 
     /* Get thread-local staging buffer (lazy initialization, no lock!) */
     staging_buffer_t* sb = get_or_create_staging_buffer();
     if (sb == NULL) {
+#ifndef CNANOLOG_NO_TIMESTAMPS
         g_stats.dropped_logs++;
+#endif
         return;  /* Failed to allocate buffer */
     }
 
-    /* Calculate argument data size */
-    va_list args, args_copy;
-    va_start(args, arg_types);
-    va_copy(args_copy, args);
-    size_t arg_data_size = arg_pack_calc_size(num_args, arg_types, args_copy);
-    va_end(args_copy);
-
-    size_t entry_size = sizeof(cnanolog_entry_header_t) + arg_data_size;
-
-    if (entry_size > MAX_LOG_ENTRY_SIZE) {
-        /* Entry too large, drop it */
-        va_end(args);
-        return;
-    }
-
     /*
-     * LOCK-FREE FAST PATH:
-     * Reserve space in thread-local buffer (just pointer arithmetic)
+     * OPTIMIZED SINGLE-PASS APPROACH:
+     * Reserve maximum possible space, pack directly, then adjust.
+     * This eliminates the need to traverse arguments twice.
      */
-    char* write_ptr = staging_reserve(sb, entry_size);
+    size_t max_entry_size = MAX_LOG_ENTRY_SIZE;
+    char* write_ptr = staging_reserve(sb, max_entry_size);
     if (write_ptr == NULL) {
         /* Buffer full, drop log */
+#ifndef CNANOLOG_NO_TIMESTAMPS
         g_stats.dropped_logs++;
-        va_end(args);
+#endif
         return;
     }
 
-    /* Write entry header */
+    /* Write entry header (we'll update data_length after packing) */
     cnanolog_entry_header_t* header = (cnanolog_entry_header_t*)write_ptr;
     header->log_id = log_id;
 #ifndef CNANOLOG_NO_TIMESTAMPS
     header->timestamp = get_timestamp();
 #endif
+
+    /* Pack arguments in SINGLE PASS (calculates size while packing) */
+    size_t arg_data_size = 0;
+    if (num_args > 0) {
+        va_list args;
+        va_start(args, arg_types);
+        char* arg_data = write_ptr + sizeof(cnanolog_entry_header_t);
+        arg_data_size = arg_pack_write_fast(arg_data,
+                                             max_entry_size - sizeof(cnanolog_entry_header_t),
+                                             num_args, arg_types, args);
+        va_end(args);
+
+        if (arg_data_size == 0) {
+            /* Packing failed (buffer too small or error) - give back all reserved space */
+            staging_adjust_reservation(sb, max_entry_size, 0);
+#ifndef CNANOLOG_NO_TIMESTAMPS
+            g_stats.dropped_logs++;
+#endif
+            return;
+        }
+    }
+    /* If num_args == 0, arg_data_size stays 0 (valid case) */
+
+    /* Update header with actual size */
     header->data_length = (uint16_t)arg_data_size;
+    size_t actual_entry_size = sizeof(cnanolog_entry_header_t) + arg_data_size;
 
-    /* Pack arguments directly into reserved space */
-    char* arg_data = write_ptr + sizeof(cnanolog_entry_header_t);
-    arg_pack_write(arg_data, arg_data_size, num_args, arg_types, args);
-    va_end(args);
-
-    /*
-     * Commit the write (atomic with memory fence)
-     * This makes the data visible to the background thread
-     */
-    staging_commit(sb, entry_size);
+    /* Adjust reservation to actual size and commit */
+    staging_adjust_reservation(sb, max_entry_size, actual_entry_size);
+    staging_commit(sb, actual_entry_size);
 
     /* No need to signal - background thread polls all buffers */
 }
@@ -384,7 +396,9 @@ static void* writer_thread_main(void* arg) {
         int found_work = 0;
 
         /* Track background thread activity */
+#ifndef CNANOLOG_NO_TIMESTAMPS
         g_stats.background_wakeups++;
+#endif
 
         /* Get current number of buffers (lock-free read) */
         size_t num_buffers = g_buffer_registry.count;
@@ -454,8 +468,10 @@ static void* writer_thread_main(void* arg) {
                         data_len_to_write = (uint16_t)compressed_len;
 
                         /* Track compression statistics */
+#ifndef CNANOLOG_NO_TIMESTAMPS
                         g_stats.bytes_compressed_from += header->data_length;
                         g_stats.bytes_compressed_to += compressed_len;
+#endif
                     } else {
                         /* Compression failed, write uncompressed */
                         data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
@@ -624,6 +640,7 @@ void cnanolog_get_stats(cnanolog_stats_t* stats) {
         return;
     }
 
+#ifndef CNANOLOG_NO_TIMESTAMPS
     /* Read counters (volatile reads for thread safety) */
     stats->total_logs_written = g_stats.total_logs;
     stats->dropped_logs = g_stats.dropped_logs;
@@ -646,9 +663,14 @@ void cnanolog_get_stats(cnanolog_stats_t* stats) {
 
     /* Count active staging buffers */
     stats->staging_buffers_active = g_buffer_registry.count;
+#else
+    /* Statistics disabled in extreme performance mode */
+    memset(stats, 0, sizeof(*stats));
+#endif
 }
 
 void cnanolog_reset_stats(void) {
+#ifndef CNANOLOG_NO_TIMESTAMPS
     /* Reset all counters to zero */
     g_stats.total_logs = 0;
     g_stats.dropped_logs = 0;
@@ -656,6 +678,7 @@ void cnanolog_reset_stats(void) {
     g_stats.bytes_compressed_from = 0;
     g_stats.bytes_compressed_to = 0;
     g_stats.background_wakeups = 0;
+#endif
 }
 
 void cnanolog_preallocate(void) {

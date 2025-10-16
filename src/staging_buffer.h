@@ -148,6 +148,18 @@ char* staging_reserve(staging_buffer_t* sb, size_t nbytes);
  */
 void staging_commit(staging_buffer_t* sb, size_t nbytes);
 
+/**
+ * Adjust reservation before commit (if you reserved more than needed).
+ * This allows optimistic reservation with post-facto adjustment.
+ *
+ * @param sb Staging buffer
+ * @param reserved_bytes Original reserved amount
+ * @param actual_bytes Actual amount used
+ *
+ * Note: Must be called AFTER staging_reserve() but BEFORE staging_commit().
+ */
+void staging_adjust_reservation(staging_buffer_t* sb, size_t reserved_bytes, size_t actual_bytes);
+
 /* ============================================================================
  * Consumer API (Background Thread)
  * ============================================================================ */

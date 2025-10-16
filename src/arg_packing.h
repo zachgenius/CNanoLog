@@ -73,6 +73,82 @@ static inline size_t arg_pack_calc_size(uint8_t num_args, const uint8_t* arg_typ
  * ============================================================================ */
 
 /**
+ * Calculate size and pack arguments in a single pass (OPTIMIZED).
+ * Returns number of bytes written, or 0 if buffer too small.
+ * This is much faster than calling arg_pack_calc_size + arg_pack_write separately.
+ */
+static inline size_t arg_pack_write_fast(char* buffer, size_t buffer_size,
+                                          uint8_t num_args, const uint8_t* arg_types,
+                                          va_list args) {
+    char* write_ptr = buffer;
+    char* buffer_end = buffer + buffer_size;
+
+    for (uint8_t i = 0; i < num_args; i++) {
+        switch (arg_types[i]) {
+            case ARG_TYPE_INT32: {
+                int32_t val = va_arg(args, int32_t);
+                if (write_ptr + sizeof(val) > buffer_end) return 0;
+                memcpy(write_ptr, &val, sizeof(val));
+                write_ptr += sizeof(val);
+                break;
+            }
+            case ARG_TYPE_INT64: {
+                int64_t val = va_arg(args, int64_t);
+                if (write_ptr + sizeof(val) > buffer_end) return 0;
+                memcpy(write_ptr, &val, sizeof(val));
+                write_ptr += sizeof(val);
+                break;
+            }
+            case ARG_TYPE_UINT32: {
+                uint32_t val = va_arg(args, uint32_t);
+                if (write_ptr + sizeof(val) > buffer_end) return 0;
+                memcpy(write_ptr, &val, sizeof(val));
+                write_ptr += sizeof(val);
+                break;
+            }
+            case ARG_TYPE_UINT64: {
+                uint64_t val = va_arg(args, uint64_t);
+                if (write_ptr + sizeof(val) > buffer_end) return 0;
+                memcpy(write_ptr, &val, sizeof(val));
+                write_ptr += sizeof(val);
+                break;
+            }
+            case ARG_TYPE_DOUBLE: {
+                double val = va_arg(args, double);
+                if (write_ptr + sizeof(val) > buffer_end) return 0;
+                memcpy(write_ptr, &val, sizeof(val));
+                write_ptr += sizeof(val);
+                break;
+            }
+            case ARG_TYPE_STRING: {
+                const char* str = va_arg(args, const char*);
+                uint32_t len = str ? (uint32_t)strlen(str) : 0;
+                if (write_ptr + sizeof(len) + len > buffer_end) return 0;
+                memcpy(write_ptr, &len, sizeof(len));
+                write_ptr += sizeof(len);
+                if (len > 0) {
+                    memcpy(write_ptr, str, len);
+                    write_ptr += len;
+                }
+                break;
+            }
+            case ARG_TYPE_POINTER: {
+                void* ptr = va_arg(args, void*);
+                uint64_t val = (uint64_t)ptr;
+                if (write_ptr + sizeof(val) > buffer_end) return 0;
+                memcpy(write_ptr, &val, sizeof(val));
+                write_ptr += sizeof(val);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    return (size_t)(write_ptr - buffer);
+}
+
+/**
  * Pack arguments into binary buffer.
  * Returns number of bytes written.
  */

@@ -148,18 +148,17 @@ void _cnanolog_log_binary(uint32_t log_id,
 #define CNANOLOG_LOG_ARGS(level, format, ...) \
     do { \
         static uint32_t __cnanolog_cached_id = UINT32_MAX; \
-        uint8_t __cnanolog_num_args = CNANOLOG_COUNT_ARGS(__VA_ARGS__); \
+        static uint8_t __cnanolog_arg_types[] = CNANOLOG_ARG_TYPES(__VA_ARGS__); \
+        static const uint8_t __cnanolog_num_args = CNANOLOG_COUNT_ARGS(__VA_ARGS__); \
         if (__cnanolog_cached_id == UINT32_MAX) { \
-            static uint8_t __cnanolog_arg_types_static[] = CNANOLOG_ARG_TYPES(__VA_ARGS__); \
             __cnanolog_cached_id = _cnanolog_register_site( \
                 level, __FILE__, __LINE__, format, \
                 __cnanolog_num_args, \
-                __cnanolog_arg_types_static); \
+                __cnanolog_arg_types); \
         } \
-        static uint8_t __cnanolog_arg_types_runtime[] = CNANOLOG_ARG_TYPES(__VA_ARGS__); \
         _cnanolog_log_binary(__cnanolog_cached_id, \
                             __cnanolog_num_args, \
-                            __cnanolog_arg_types_runtime, \
+                            __cnanolog_arg_types, \
                             __VA_ARGS__); \
     } while(0)
 

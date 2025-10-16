@@ -108,6 +108,23 @@ void staging_commit(staging_buffer_t* sb, size_t nbytes) {
     sb->committed = sb->write_pos;
 }
 
+void staging_adjust_reservation(staging_buffer_t* sb, size_t reserved_bytes, size_t actual_bytes) {
+    if (sb == NULL) {
+        return;
+    }
+
+    /* Sanity check: actual must be <= reserved */
+    if (actual_bytes > reserved_bytes) {
+        return;
+    }
+
+    /* Give back the unused space by reducing write_pos */
+    size_t unused = reserved_bytes - actual_bytes;
+    if (unused > 0) {
+        sb->write_pos -= unused;
+    }
+}
+
 /* ============================================================================
  * Consumer API
  * ============================================================================ */

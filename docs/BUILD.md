@@ -257,7 +257,7 @@ target_link_libraries(myapp ${CNANOLOG_LIB})
 
 ```bash
 gcc myapp.c \
-    CNanoLog/src/cnanolog_binary.c \
+    CNanoLog/src/cnanolog.c \
     CNanoLog/src/binary_writer.c \
     CNanoLog/src/compressor.c \
     CNanoLog/src/log_registry.c \

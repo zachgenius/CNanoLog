@@ -275,7 +275,7 @@ gcc myapp.c -lcnanolog -o myapp
 cp -r src include your_project/
 
 # Compile with your project
-gcc myapp.c cnanolog_binary.c binary_writer.c log_registry.c \
+gcc myapp.c cnanolog.c binary_writer.c log_registry.c \
     staging_buffer.c background_thread.c -o myapp
 ```
 

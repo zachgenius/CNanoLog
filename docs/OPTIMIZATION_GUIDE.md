@@ -61,7 +61,7 @@ cmake --build build
 If your use case doesn't need precise timestamps:
 
 ```c
-// In src/cnanolog_binary.c, change get_timestamp():
+// In src/cnanolog.c, change get_timestamp():
 static uint64_t get_timestamp(void) {
 #ifdef CNANOLOG_FAST_PATH
     return 0;  // No timestamp: saves 8-10ns

@@ -97,7 +97,7 @@ echo "" >> "$OUTPUT_FILE"
 
 echo "/* Internal headers */" >> "$OUTPUT_FILE"
 # Note: log_registry must come first because it defines log_site_t used by others
-for header in log_registry ring_buffer cycles arg_packing packer compressor binary_writer staging_buffer; do
+for header in log_registry cycles arg_packing packer compressor binary_writer staging_buffer; do
     if [ -f "$PROJECT_ROOT/src/${header}.h" ]; then
         echo "/* ${header}.h */" >> "$OUTPUT_FILE"
         strip_includes_header "$PROJECT_ROOT/src/${header}.h" >> "$OUTPUT_FILE"
@@ -119,7 +119,7 @@ IMPL_START
 echo "Adding implementation files..."
 
 # Add all implementation files
-for impl in platform ring_buffer compressor packer binary_writer log_registry staging_buffer cnanolog_binary; do
+for impl in platform compressor packer binary_writer log_registry staging_buffer cnanolog; do
     if [ -f "$PROJECT_ROOT/src/${impl}.c" ]; then
         echo "" >> "$OUTPUT_FILE"
         echo "/* ============================================================================" >> "$OUTPUT_FILE"

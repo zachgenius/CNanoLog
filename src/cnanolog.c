@@ -31,12 +31,14 @@
  * 3. No more work found (buffer empty)
  *
  * Tuning for different scenarios:
- * - High throughput/burst: FLUSH_BATCH_SIZE=1000, INTERVAL=200ms (more buffering, fewer flushes)
+ * - High throughput/burst: FLUSH_BATCH_SIZE=2000, INTERVAL=200ms (more buffering, fewer flushes)
  * - Low latency: FLUSH_BATCH_SIZE=10, INTERVAL=10ms (less buffering, more flushes)
- * - Balanced (default): FLUSH_BATCH_SIZE=1000, INTERVAL=200ms
+ * - Balanced (default): FLUSH_BATCH_SIZE=1000, INTERVAL=100ms
+ *
+ * Benchmark optimized: Higher batch size to reduce flush frequency under heavy load.
  */
-#define FLUSH_BATCH_SIZE 500           /* Flush every N entries */
-#define FLUSH_INTERVAL_MS 100           /* OR flush every N milliseconds */
+#define FLUSH_BATCH_SIZE 2000          /* Flush every N entries */
+#define FLUSH_INTERVAL_MS 200          /* OR flush every N milliseconds */
 
 /* ============================================================================
  * Global State

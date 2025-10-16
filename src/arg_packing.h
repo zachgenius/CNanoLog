@@ -69,29 +69,13 @@ static inline size_t arg_pack_write_fast(char* buffer, size_t buffer_size,
             }
             case ARG_TYPE_STRING: {
                 const char* str = va_arg(args, const char*);
-                if (!str) {
-                    uint32_t len = 0;
-                    if (write_ptr + sizeof(len) > buffer_end) return 0;
-                    memcpy(write_ptr, &len, sizeof(len));
-                    write_ptr += sizeof(len);
-                } else {
-                    /* Combined strlen+memcpy: single pass over string (~2x faster) */
-                    if (write_ptr + sizeof(uint32_t) > buffer_end) return 0;
-                    char* len_pos = write_ptr;
-                    char* data_start = write_ptr + sizeof(uint32_t);
-                    char* data_ptr = data_start;
-
-                    /* Copy until null terminator or buffer end */
-                    while (*str && data_ptr < buffer_end) {
-                        *data_ptr++ = *str++;
-                    }
-
-                    /* Check if string was truncated */
-                    if (*str != '\0') return 0;
-
-                    uint32_t len = (uint32_t)(data_ptr - data_start);
-                    memcpy(len_pos, &len, sizeof(len));
-                    write_ptr = data_ptr;
+                uint32_t len = str ? (uint32_t)strlen(str) : 0;
+                if (write_ptr + sizeof(len) + len > buffer_end) return 0;
+                memcpy(write_ptr, &len, sizeof(len));
+                write_ptr += sizeof(len);
+                if (len > 0) {
+                    memcpy(write_ptr, str, len);
+                    write_ptr += len;
                 }
                 break;
             }

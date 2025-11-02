@@ -27,7 +27,7 @@ int test_create_close() {
         TEST_FAIL("Failed to write header");
 
     /* Close with empty dictionary */
-    if (binwriter_close(writer, NULL, 0) != 0)
+    if (binwriter_close(writer, NULL, 0, NULL, 0) != 0)
         TEST_FAIL("Failed to close writer");
 
     /* Verify file exists */
@@ -58,7 +58,7 @@ int test_write_header() {
         TEST_FAIL("Failed to write header");
 
     /* Flush and close */
-    binwriter_close(writer, NULL, 0);
+    binwriter_close(writer, NULL, 0, NULL, 0);
 
     /* Read back and verify */
     FILE* fp = fopen(TEST_FILE, "rb");
@@ -115,7 +115,7 @@ int test_write_entries() {
     if (binwriter_get_entry_count(writer) != 2)
         TEST_FAIL("Entry count wrong");
 
-    binwriter_close(writer, NULL, 0);
+    binwriter_close(writer, NULL, 0, NULL, 0);
 
     /* Verify entries in file */
     FILE* fp = fopen(TEST_FILE, "rb");
@@ -194,7 +194,7 @@ int test_write_dictionary() {
     sites[1].arg_types[0] = ARG_TYPE_INT32;
 
     /* Close with dictionary */
-    if (binwriter_close(writer, sites, 2) != 0)
+    if (binwriter_close(writer, sites, 2, NULL, 0) != 0)
         TEST_FAIL("Failed to close with dictionary");
 
     /* Verify file */
@@ -292,7 +292,7 @@ int test_buffer_flush() {
     if (binwriter_get_buffered_bytes(writer) != 0)
         TEST_FAIL("Buffer not empty after flush");
 
-    binwriter_close(writer, NULL, 0);
+    binwriter_close(writer, NULL, 0, NULL, 0);
     unlink(TEST_FILE);
 
     TEST_PASS();
@@ -324,7 +324,7 @@ int test_statistics() {
     if (binwriter_get_bytes_written(writer) == 0)
         TEST_FAIL("No bytes written");
 
-    binwriter_close(writer, NULL, 0);
+    binwriter_close(writer, NULL, 0, NULL, 0);
     unlink(TEST_FILE);
 
     TEST_PASS();

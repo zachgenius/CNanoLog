@@ -162,6 +162,41 @@ CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_dict_entry_t) == 30,
                        "Dictionary entry must be exactly 30 bytes");
 
 /* ============================================================================
+ * Level Dictionary (for custom log levels)
+ * ============================================================================ */
+
+#define CNANOLOG_LEVEL_DICT_MAGIC 0x4C564C53  /* "LVLS" in ASCII */
+
+/**
+ * Header for the level dictionary section.
+ * Written before the log site dictionary if custom levels are registered.
+ */
+typedef struct {
+    uint32_t magic;         /* Magic number: 0x4C564C53 ("LVLS") */
+    uint32_t num_levels;    /* Number of custom level entries */
+    uint32_t total_size;    /* Total size of level dictionary in bytes */
+    uint32_t reserved;      /* Reserved for future use (must be 0) */
+} __attribute__((packed)) cnanolog_level_dict_header_t;
+
+/* Compile-time size check */
+CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_level_dict_header_t) == 16,
+                       "Level dictionary header must be exactly 16 bytes");
+
+/**
+ * Entry for a custom log level.
+ * Maps a level value to its name.
+ */
+typedef struct {
+    uint8_t level;          /* Level value (0-255) */
+    uint8_t name_length;    /* Length of level name string */
+    uint8_t reserved[2];    /* Reserved for alignment (must be 0) */
+} __attribute__((packed)) cnanolog_level_dict_entry_t;
+
+/* Compile-time size check */
+CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_level_dict_entry_t) == 4,
+                       "Level dictionary entry must be exactly 4 bytes");
+
+/* ============================================================================
  * Helper Macros
  * ============================================================================ */
 

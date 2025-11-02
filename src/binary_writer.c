@@ -225,6 +225,56 @@ static int write_dict_entry(binary_writer_t* writer, const log_site_t* site) {
     return 0;
 }
 
+/**
+ * Write level dictionary (custom log levels).
+ * Returns 0 on success, -1 on failure.
+ */
+static int write_level_dict(binary_writer_t* writer,
+                             const custom_level_entry_t* levels,
+                             uint32_t num_levels) {
+    if (num_levels == 0 || levels == NULL) {
+        return 0;  /* No custom levels, nothing to write */
+    }
+
+    /* Calculate total size */
+    uint32_t total_size = sizeof(cnanolog_level_dict_header_t);
+    for (uint32_t i = 0; i < num_levels; i++) {
+        total_size += sizeof(cnanolog_level_dict_entry_t);
+        total_size += (uint32_t)strlen(levels[i].name);
+    }
+
+    /* Write level dictionary header */
+    cnanolog_level_dict_header_t header;
+    header.magic = CNANOLOG_LEVEL_DICT_MAGIC;
+    header.num_levels = num_levels;
+    header.total_size = total_size;
+    header.reserved = 0;
+
+    if (buffer_write(writer, &header, sizeof(header)) != 0) {
+        return -1;
+    }
+
+    /* Write each level entry */
+    for (uint32_t i = 0; i < num_levels; i++) {
+        cnanolog_level_dict_entry_t entry;
+        entry.level = levels[i].level;
+        entry.name_length = (uint8_t)strlen(levels[i].name);
+        entry.reserved[0] = 0;
+        entry.reserved[1] = 0;
+
+        if (buffer_write(writer, &entry, sizeof(entry)) != 0) {
+            return -1;
+        }
+
+        /* Write level name */
+        if (buffer_write(writer, levels[i].name, entry.name_length) != 0) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 /* ============================================================================
  * Public API Implementation
  * ============================================================================ */
@@ -383,7 +433,9 @@ int binwriter_flush(binary_writer_t* writer) {
 
 int binwriter_close(binary_writer_t* writer,
                     const log_site_t* sites,
-                    uint32_t num_sites) {
+                    uint32_t num_sites,
+                    const custom_level_entry_t* custom_levels,
+                    uint32_t num_custom_levels) {
     if (writer == NULL) {
         return -1;
     }
@@ -401,7 +453,12 @@ int binwriter_close(binary_writer_t* writer,
     /* Dictionary starts at current write position */
     uint64_t dict_offset = writer->bytes_written;
 
-    /* Write dictionary header */
+    /* Write level dictionary first (if custom levels exist) */
+    if (write_level_dict(writer, custom_levels, num_custom_levels) != 0) {
+        goto cleanup_error;
+    }
+
+    /* Write log site dictionary header */
     cnanolog_dict_header_t dict_header;
     dict_header.magic = CNANOLOG_DICT_MAGIC;
     dict_header.num_entries = num_sites;
@@ -499,6 +556,8 @@ int binwriter_rotate(binary_writer_t* writer,
                      const char* new_path,
                      const log_site_t* sites,
                      uint32_t num_sites,
+                     const custom_level_entry_t* custom_levels,
+                     uint32_t num_custom_levels,
                      uint64_t timestamp_frequency,
                      uint64_t start_timestamp,
                      time_t start_time_sec,
@@ -518,9 +577,16 @@ int binwriter_rotate(binary_writer_t* writer,
         return -1;
     }
 
-    /* Write dictionary to current file */
+    /* Write dictionaries to current file */
     uint64_t dict_offset = writer->bytes_written;
 
+    /* Write level dictionary first (if custom levels exist) */
+    if (write_level_dict(writer, custom_levels, num_custom_levels) != 0) {
+        fprintf(stderr, "binwriter_rotate: write level dict failed\n");
+        return -1;
+    }
+
+    /* Write log site dictionary */
     cnanolog_dict_header_t dict_header;
     dict_header.magic = CNANOLOG_DICT_MAGIC;
     dict_header.num_entries = num_sites;

@@ -109,7 +109,7 @@ int main() {
     sites[3].arg_types[0] = ARG_TYPE_STRING;
 
     /* Close with dictionary */
-    if (binwriter_close(writer, sites, 4) != 0) {
+    if (binwriter_close(writer, sites, 4, NULL, 0) != 0) {
         fprintf(stderr, "FAIL: Cannot close writer\n");
         return 1;
     }

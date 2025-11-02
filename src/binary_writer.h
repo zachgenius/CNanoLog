@@ -13,6 +13,18 @@
 #include <stddef.h>
 #include <time.h>
 
+/* ============================================================================
+ * Custom Level Support
+ * ============================================================================ */
+
+/**
+ * Custom level definition (matches cnanolog.c internal structure).
+ */
+typedef struct {
+    uint8_t level;
+    char name[32];
+} custom_level_entry_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -118,17 +130,22 @@ int binwriter_flush(binary_writer_t* writer);
  * @param writer Binary writer handle
  * @param sites Array of log site information
  * @param num_sites Number of log sites in the array
+ * @param custom_levels Array of custom level definitions (can be NULL)
+ * @param num_custom_levels Number of custom levels (0 if none)
  * @return 0 on success, -1 on failure
  *
  * Note: This function:
  * 1. Flushes any remaining buffered data
- * 2. Writes the dictionary at the current position
- * 3. Seeks back to the header and updates entry_count
- * 4. Closes the file and frees the writer
+ * 2. Writes the level dictionary (if custom levels exist)
+ * 3. Writes the log site dictionary
+ * 4. Seeks back to the header and updates entry_count
+ * 5. Closes the file and frees the writer
  */
 int binwriter_close(binary_writer_t* writer,
                     const log_site_t* sites,
-                    uint32_t num_sites);
+                    uint32_t num_sites,
+                    const custom_level_entry_t* custom_levels,
+                    uint32_t num_custom_levels);
 
 /**
  * Rotate the log file (for date-based rotation).
@@ -138,6 +155,8 @@ int binwriter_close(binary_writer_t* writer,
  * @param new_path Path to the new log file
  * @param sites Array of log site information (for dictionary)
  * @param num_sites Number of log sites
+ * @param custom_levels Array of custom level definitions (can be NULL)
+ * @param num_custom_levels Number of custom levels (0 if none)
  * @param timestamp_frequency CPU ticks per second
  * @param start_timestamp rdtsc() value when logging started
  * @param start_time_sec Unix epoch seconds
@@ -145,7 +164,7 @@ int binwriter_close(binary_writer_t* writer,
  * @return 0 on success, -1 on failure
  *
  * Note: This function:
- * 1. Flushes and closes the current file with dictionary
+ * 1. Flushes and closes the current file with dictionaries
  * 2. Opens a new file at new_path
  * 3. Writes a new file header
  * 4. Resets entry count for the new file
@@ -154,6 +173,8 @@ int binwriter_rotate(binary_writer_t* writer,
                      const char* new_path,
                      const log_site_t* sites,
                      uint32_t num_sites,
+                     const custom_level_entry_t* custom_levels,
+                     uint32_t num_custom_levels,
                      uint64_t timestamp_frequency,
                      uint64_t start_timestamp,
                      time_t start_time_sec,

@@ -12,6 +12,7 @@ set(EXAMPLES
     production_server
     error_handling
     realtime_logging
+    rotation_example
 )
 
 # Build each example

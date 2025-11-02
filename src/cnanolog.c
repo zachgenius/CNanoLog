@@ -54,6 +54,15 @@ static cnanolog_rotation_policy_t g_rotation_policy = CNANOLOG_ROTATE_NONE;
 static char g_base_path[512] = {0};  /* Base path for rotated files */
 static int g_current_day = -1;       /* Current day of year (for rotation check) */
 
+/* Custom level registry */
+typedef struct {
+    uint8_t level;
+    char name[32];
+} custom_level_t;
+
+static custom_level_t g_custom_levels[CNANOLOG_MAX_CUSTOM_LEVELS];
+static volatile uint32_t g_custom_level_count = 0;
+
 /* ============================================================================
  * Global Statistics Tracking
  * ============================================================================ */
@@ -155,6 +164,61 @@ static void calibrate_timestamp(void) {
 #endif
 
 /* ============================================================================
+ * Custom Level Registration
+ * ============================================================================ */
+
+int cnanolog_register_level(const char* name, uint8_t level) {
+    if (name == NULL) {
+        fprintf(stderr, "cnanolog_register_level: name is NULL\n");
+        return -1;
+    }
+
+    if (g_is_initialized) {
+        fprintf(stderr, "cnanolog_register_level: Cannot register levels after init\n");
+        return -1;
+    }
+
+    if (level < 4) {
+        fprintf(stderr, "cnanolog_register_level: Level %u is reserved (0-3)\n", level);
+        return -1;
+    }
+
+    if (g_custom_level_count >= CNANOLOG_MAX_CUSTOM_LEVELS) {
+        fprintf(stderr, "cnanolog_register_level: Maximum custom levels reached (%d)\n",
+                CNANOLOG_MAX_CUSTOM_LEVELS);
+        return -1;
+    }
+
+    /* Check for duplicate level value */
+    for (uint32_t i = 0; i < g_custom_level_count; i++) {
+        if (g_custom_levels[i].level == level) {
+            fprintf(stderr, "cnanolog_register_level: Level %u already registered as '%s'\n",
+                    level, g_custom_levels[i].name);
+            return -1;
+        }
+    }
+
+    /* Add to registry */
+    g_custom_levels[g_custom_level_count].level = level;
+    strncpy(g_custom_levels[g_custom_level_count].name, name, sizeof(g_custom_levels[0].name) - 1);
+    g_custom_levels[g_custom_level_count].name[sizeof(g_custom_levels[0].name) - 1] = '\0';
+    g_custom_level_count++;
+
+    return 0;
+}
+
+/**
+ * Get all registered custom levels (for writing to binary file).
+ * Internal function used by binary_writer.
+ */
+const custom_level_t* _cnanolog_get_custom_levels(uint32_t* count) {
+    if (count != NULL) {
+        *count = g_custom_level_count;
+    }
+    return g_custom_levels;
+}
+
+/* ============================================================================
  * Rotation Helpers
  * ============================================================================ */
 
@@ -216,9 +280,14 @@ static int check_and_rotate_if_needed(void) {
         uint32_t num_sites = 0;
         const log_site_t* sites = log_registry_get_all(&g_registry, &num_sites);
 
+        /* Get custom levels */
+        uint32_t num_custom_levels = 0;
+        const custom_level_t* custom_levels = _cnanolog_get_custom_levels(&num_custom_levels);
+
         /* Rotate the log file */
         fprintf(stderr, "cnanolog: Rotating log file to: %s\n", new_path);
         if (binwriter_rotate(g_binary_writer, new_path, sites, num_sites,
+                           (const custom_level_entry_t*)custom_levels, num_custom_levels,
 #ifndef CNANOLOG_NO_TIMESTAMPS
                            g_timestamp_frequency,
                            g_start_timestamp,
@@ -280,7 +349,7 @@ int cnanolog_init(const char* log_file_path) {
                                (int32_t)ts.tv_nsec) != 0) {
 #endif
         fprintf(stderr, "cnanolog_init: Failed to write header\n");
-        binwriter_close(g_binary_writer, NULL, 0);
+        binwriter_close(g_binary_writer, NULL, 0, NULL, 0);
         log_registry_destroy(&g_registry);
         return -1;
     }
@@ -291,7 +360,7 @@ int cnanolog_init(const char* log_file_path) {
     /* Start background writer thread */
     if (cnanolog_thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
         fprintf(stderr, "cnanolog_init: Failed to create writer thread\n");
-        binwriter_close(g_binary_writer, NULL, 0);
+        binwriter_close(g_binary_writer, NULL, 0, NULL, 0);
         log_registry_destroy(&g_registry);
         return -1;
     }
@@ -359,7 +428,7 @@ int cnanolog_init_ex(const cnanolog_rotation_config_t* config) {
                                (int32_t)ts.tv_nsec) != 0) {
 #endif
         fprintf(stderr, "cnanolog_init_ex: Failed to write header\n");
-        binwriter_close(g_binary_writer, NULL, 0);
+        binwriter_close(g_binary_writer, NULL, 0, NULL, 0);
         log_registry_destroy(&g_registry);
         return -1;
     }
@@ -377,7 +446,7 @@ int cnanolog_init_ex(const cnanolog_rotation_config_t* config) {
     /* Start background writer thread */
     if (cnanolog_thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
         fprintf(stderr, "cnanolog_init_ex: Failed to create writer thread\n");
-        binwriter_close(g_binary_writer, NULL, 0);
+        binwriter_close(g_binary_writer, NULL, 0, NULL, 0);
         log_registry_destroy(&g_registry);
         return -1;
     }
@@ -454,8 +523,13 @@ void cnanolog_shutdown(void) {
     uint32_t num_sites = 0;
     const log_site_t* sites = log_registry_get_all(&g_registry, &num_sites);
 
+    /* Get custom levels */
+    uint32_t num_custom_levels = 0;
+    const custom_level_t* custom_levels = _cnanolog_get_custom_levels(&num_custom_levels);
+
     /* Close binary writer (writes dictionary) */
-    if (binwriter_close(g_binary_writer, sites, num_sites) != 0) {
+    if (binwriter_close(g_binary_writer, sites, num_sites,
+                      (const custom_level_entry_t*)custom_levels, num_custom_levels) != 0) {
         fprintf(stderr, "cnanolog_shutdown: Failed to close binary writer\n");
     }
 

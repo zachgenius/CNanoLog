@@ -22,7 +22,7 @@ int main() {
         .arg_types = {ARG_TYPE_INT32, ARG_TYPE_INT32}
     };
     
-    binwriter_close(w, &site, 1);
+    binwriter_close(w, &site, 1, NULL, 0);
     
     /* Read back and print raw bytes */
     FILE* fp = fopen("test.clog", "rb");

@@ -17,9 +17,17 @@
 /* Default output format */
 #define DEFAULT_FORMAT "[%t] [%l] [%f:%L] %m"
 
+/* Maximum level filters */
+#define MAX_LEVEL_FILTERS 64
+
 /* ============================================================================
  * Dictionary Management
  * ============================================================================ */
+
+typedef struct {
+    uint8_t level;
+    char name[32];
+} level_entry_t;
 
 typedef struct {
     uint32_t log_id;
@@ -34,6 +42,8 @@ typedef struct {
 typedef struct {
     dict_entry_t* entries;
     uint32_t num_entries;
+    level_entry_t* custom_levels;
+    uint32_t num_custom_levels;
     uint64_t timestamp_frequency;
     uint64_t start_timestamp;
     time_t start_time_sec;
@@ -45,20 +55,29 @@ typedef struct {
  * Helper Functions
  * ============================================================================ */
 
-static const char* level_to_string(uint8_t level) {
-    /* Match the order in cnanolog.h:
-     * LOG_LEVEL_INFO  = 0
-     * LOG_LEVEL_WARN  = 1
-     * LOG_LEVEL_ERROR = 2
-     * LOG_LEVEL_DEBUG = 3
-     */
+static const char* level_to_string(decompressor_ctx_t* ctx, uint8_t level) {
+    /* First check built-in levels */
     switch (level) {
         case 0: return "INFO";
         case 1: return "WARN";
         case 2: return "ERROR";
         case 3: return "DEBUG";
-        default: return "UNKNOWN";
+        default: break;
     }
+
+    /* Check custom levels */
+    if (ctx != NULL && ctx->custom_levels != NULL) {
+        for (uint32_t i = 0; i < ctx->num_custom_levels; i++) {
+            if (ctx->custom_levels[i].level == level) {
+                return ctx->custom_levels[i].name;
+            }
+        }
+    }
+
+    /* Unknown level - use static buffer to format number */
+    static char buf[16];
+    snprintf(buf, sizeof(buf), "LEVEL_%u", level);
+    return buf;
 }
 
 /**
@@ -86,6 +105,63 @@ static void format_timestamp(decompressor_ctx_t* ctx, uint64_t timestamp, char* 
  * ============================================================================ */
 
 /**
+ * Load level dictionary from file (if present).
+ * Returns 0 on success, -1 on failure.
+ */
+static int load_level_dictionary(FILE* fp, decompressor_ctx_t* ctx) {
+    /* Read level dictionary header */
+    cnanolog_level_dict_header_t level_header;
+    if (fread(&level_header, 1, sizeof(level_header), fp) != sizeof(level_header)) {
+        fprintf(stderr, "Error: Failed to read level dictionary header\n");
+        return -1;
+    }
+
+    /* Validate level dictionary magic */
+    if (level_header.magic != CNANOLOG_LEVEL_DICT_MAGIC) {
+        /* Not a level dictionary - rewind and return success */
+        fseek(fp, -(long)sizeof(level_header), SEEK_CUR);
+        ctx->custom_levels = NULL;
+        ctx->num_custom_levels = 0;
+        return 0;
+    }
+
+    /* Allocate level entries */
+    ctx->num_custom_levels = level_header.num_levels;
+    if (ctx->num_custom_levels > 0) {
+        ctx->custom_levels = (level_entry_t*)calloc(ctx->num_custom_levels, sizeof(level_entry_t));
+        if (ctx->custom_levels == NULL) {
+            fprintf(stderr, "Error: Failed to allocate level entries\n");
+            return -1;
+        }
+
+        /* Read each level entry */
+        for (uint32_t i = 0; i < ctx->num_custom_levels; i++) {
+            cnanolog_level_dict_entry_t entry;
+            if (fread(&entry, 1, sizeof(entry), fp) != sizeof(entry)) {
+                fprintf(stderr, "Error: Failed to read level entry %u\n", i);
+                return -1;
+            }
+
+            ctx->custom_levels[i].level = entry.level;
+
+            /* Read level name */
+            if (entry.name_length > sizeof(ctx->custom_levels[i].name) - 1) {
+                fprintf(stderr, "Error: Level name too long\n");
+                return -1;
+            }
+
+            if (fread(ctx->custom_levels[i].name, 1, entry.name_length, fp) != entry.name_length) {
+                fprintf(stderr, "Error: Failed to read level name\n");
+                return -1;
+            }
+            ctx->custom_levels[i].name[entry.name_length] = '\0';
+        }
+    }
+
+    return 0;
+}
+
+/**
  * Load dictionary from file.
  * Returns 0 on success, -1 on failure.
  */
@@ -96,7 +172,13 @@ static int load_dictionary(FILE* fp, decompressor_ctx_t* ctx, uint64_t dict_offs
         return -1;
     }
 
-    /* Read dictionary header */
+    /* Try to load level dictionary first (optional) */
+    if (load_level_dictionary(fp, ctx) != 0) {
+        fprintf(stderr, "Error: Failed to load level dictionary\n");
+        return -1;
+    }
+
+    /* Read log site dictionary header */
     cnanolog_dict_header_t dict_header;
     if (fread(&dict_header, 1, sizeof(dict_header), fp) != sizeof(dict_header)) {
         fprintf(stderr, "Error: Failed to read dictionary header\n");
@@ -575,7 +657,7 @@ static void format_output(const char* format,
                 }
                 case 'l': {  /* Log level */
                     int written = snprintf(out_ptr, out_end - out_ptr, "%s",
-                                          level_to_string(dict->log_level));
+                                          level_to_string(ctx, dict->log_level));
                     out_ptr += (written > 0) ? written : 0;
                     fmt_ptr++;
                     break;
@@ -623,6 +705,88 @@ static void format_output(const char* format,
 }
 
 /* ============================================================================
+ * Level Filtering
+ * ============================================================================ */
+
+/**
+ * Parse comma-separated level names into level numbers.
+ * Returns number of levels parsed, or -1 on error.
+ */
+static int parse_level_filters(const char* filter_str, decompressor_ctx_t* ctx,
+                               uint8_t* levels_out, int max_levels) {
+    if (filter_str == NULL || levels_out == NULL) {
+        return -1;
+    }
+
+    char* str_copy = strdup(filter_str);
+    if (str_copy == NULL) {
+        return -1;
+    }
+
+    int count = 0;
+    char* token = strtok(str_copy, ",");
+    while (token != NULL && count < max_levels) {
+        /* Trim whitespace */
+        while (*token == ' ' || *token == '\t') token++;
+        char* end = token + strlen(token) - 1;
+        while (end > token && (*end == ' ' || *end == '\t')) {
+            *end = '\0';
+            end--;
+        }
+
+        /* Try to match built-in levels */
+        uint8_t level = 255;  /* Invalid */
+        if (strcasecmp(token, "INFO") == 0) {
+            level = 0;
+        } else if (strcasecmp(token, "WARN") == 0) {
+            level = 1;
+        } else if (strcasecmp(token, "ERROR") == 0) {
+            level = 2;
+        } else if (strcasecmp(token, "DEBUG") == 0) {
+            level = 3;
+        } else {
+            /* Try to match custom levels */
+            if (ctx->custom_levels != NULL) {
+                for (uint32_t i = 0; i < ctx->num_custom_levels; i++) {
+                    if (strcasecmp(token, ctx->custom_levels[i].name) == 0) {
+                        level = ctx->custom_levels[i].level;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (level == 255) {
+            fprintf(stderr, "Warning: Unknown level '%s', ignoring\n", token);
+        } else {
+            levels_out[count++] = level;
+        }
+
+        token = strtok(NULL, ",");
+    }
+
+    free(str_copy);
+    return count;
+}
+
+/**
+ * Check if a level should be included based on filter.
+ * Returns 1 if should include, 0 if should filter out.
+ */
+static int should_include_level(uint8_t level, const uint8_t* filter_levels, int num_filters) {
+    if (filter_levels == NULL || num_filters == 0) {
+        return 1;  /* No filter, include everything */
+    }
+
+    for (int i = 0; i < num_filters; i++) {
+        if (level == filter_levels[i]) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* ============================================================================
  * Help and Usage
  * ============================================================================ */
 
@@ -631,6 +795,7 @@ static void print_help(const char* program_name) {
     fprintf(stderr, "Usage: %s [options] <input.clog> [output.txt]\n\n", program_name);
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "  -f, --format <fmt>   Specify output format (default: \"[%%t] [%%l] [%%f:%%L] %%m\")\n");
+    fprintf(stderr, "  -l, --level <levels> Filter by log level (comma-separated, e.g., \"METRIC,AUDIT\")\n");
     fprintf(stderr, "  -h, --help           Show this help message\n\n");
     fprintf(stderr, "Format tokens:\n");
     fprintf(stderr, "  %%t   Human-readable timestamp (YYYY-MM-DD HH:MM:SS.nnnnnnnnn)\n");
@@ -657,10 +822,13 @@ static void print_help(const char* program_name) {
  * Main Decompression
  * ============================================================================ */
 
-static int decompress_file(const char* input_path, FILE* output_fp, const char* output_format) {
+static int decompress_file(const char* input_path, FILE* output_fp, const char* output_format,
+                          const char* level_filter_str) {
     FILE* input_fp = NULL;
     decompressor_ctx_t ctx;
     memset(&ctx, 0, sizeof(ctx));
+    uint8_t filter_levels[MAX_LEVEL_FILTERS];
+    int num_filter_levels = 0;
     int ret = -1;
 
     /* Open input file */
@@ -718,6 +886,19 @@ static int decompress_file(const char* input_path, FILE* output_fp, const char* 
     if (load_dictionary(input_fp, &ctx, dict_offset) != 0) {
         fprintf(stderr, "Error: Failed to load dictionary\n");
         goto cleanup;
+    }
+
+    /* Parse level filters (now that we have custom levels loaded) */
+    if (level_filter_str != NULL) {
+        num_filter_levels = parse_level_filters(level_filter_str, &ctx,
+                                                filter_levels, MAX_LEVEL_FILTERS);
+        if (num_filter_levels < 0) {
+            fprintf(stderr, "Error: Failed to parse level filter\n");
+            goto cleanup;
+        }
+        if (num_filter_levels > 0) {
+            fprintf(stderr, "Filtering by %d level(s)\n", num_filter_levels);
+        }
     }
 
     /* Seek back to first entry (after header) */
@@ -784,6 +965,12 @@ static int decompress_file(const char* input_path, FILE* output_fp, const char* 
         /* Get dictionary entry */
         dict_entry_t* dict = &ctx.entries[log_id];
 
+        /* Apply level filter */
+        if (!should_include_level(dict->log_level, filter_levels, num_filter_levels)) {
+            entries_processed++;
+            continue;  /* Skip this entry */
+        }
+
         /* Decompress argument data */
         const char* data_to_format = arg_buffer;
         if (data_length > 0) {
@@ -827,6 +1014,11 @@ cleanup:
         free(ctx.entries);
     }
 
+    /* Free custom levels */
+    if (ctx.custom_levels != NULL) {
+        free(ctx.custom_levels);
+    }
+
     if (input_fp != NULL) {
         fclose(input_fp);
     }
@@ -842,6 +1034,7 @@ int main(int argc, char** argv) {
     const char* input_path = NULL;
     const char* output_path = NULL;
     const char* output_format = DEFAULT_FORMAT;
+    const char* level_filter_str = NULL;
     FILE* output_fp = stdout;
 
     /* Parse command-line arguments */
@@ -857,6 +1050,14 @@ int main(int argc, char** argv) {
                 return 1;
             }
             output_format = argv[i + 1];
+            i += 2;
+        } else if (strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--level") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: %s requires an argument\n", argv[i]);
+                fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
+                return 1;
+            }
+            level_filter_str = argv[i + 1];
             i += 2;
         } else if (argv[i][0] == '-') {
             fprintf(stderr, "Error: Unknown option '%s'\n", argv[i]);
@@ -895,7 +1096,7 @@ int main(int argc, char** argv) {
     }
 
     /* Decompress */
-    int ret = decompress_file(input_path, output_fp, output_format);
+    int ret = decompress_file(input_path, output_fp, output_format, level_filter_str);
 
     /* Close output file */
     if (output_fp != stdout) {

@@ -130,11 +130,32 @@ int cnanolog_set_writer_affinity(int core_id);
  * ============================================================================ */
 
 typedef enum {
-    LOG_LEVEL_INFO,
-    LOG_LEVEL_WARN,
-    LOG_LEVEL_ERROR,
-    LOG_LEVEL_DEBUG
+    LOG_LEVEL_INFO  = 0,
+    LOG_LEVEL_WARN  = 1,
+    LOG_LEVEL_ERROR = 2,
+    LOG_LEVEL_DEBUG = 3
 } cnanolog_level_t;
+
+/* Custom log levels can use any uint8_t value (4-255) */
+#define CNANOLOG_MAX_CUSTOM_LEVELS 64
+
+/**
+ * Register a custom log level.
+ * Must be called before cnanolog_init() or cnanolog_init_ex().
+ *
+ * @param name Level name (e.g., "METRIC", "AUDIT", "TRACE")
+ * @param level Level value (4-255, 0-3 are reserved for INFO/WARN/ERROR/DEBUG)
+ * @return 0 on success, -1 on failure
+ *
+ * Example:
+ *   cnanolog_register_level("METRIC", 10);
+ *   cnanolog_register_level("AUDIT", 20);
+ *   cnanolog_register_level("TRACE", 5);
+ *
+ * Then use with cnanolog_log() or define convenience macros:
+ *   #define log_metric(fmt, ...) cnanolog_log(10, fmt, ##__VA_ARGS__)
+ */
+int cnanolog_register_level(const char* name, uint8_t level);
 
 /* ============================================================================
  * Internal API (do not call directly)
@@ -270,6 +291,45 @@ void _cnanolog_log_binary(uint32_t log_id,
     CNANOLOG_LOG_ARGS(LOG_LEVEL_DEBUG, format, a1, a2, a3)
 #define log_debug4(format, a1, a2, a3, a4) \
     CNANOLOG_LOG_ARGS(LOG_LEVEL_DEBUG, format, a1, a2, a3, a4)
+
+/* ============================================================================
+ * Generic Logging Macros (for custom levels)
+ *
+ * Usage with custom levels:
+ *   // First register the level
+ *   cnanolog_register_level("METRIC", 10);
+ *
+ *   // Then use the generic macros
+ *   cnanolog_log(10, "No arguments");
+ *   cnanolog_log1(10, "One arg: %d", value);
+ *   cnanolog_log2(10, "Two args: %d %s", val, str);
+ *
+ *   // Or define convenience macros
+ *   #define log_metric(fmt) cnanolog_log(10, fmt)
+ *   #define log_metric1(fmt, a1) cnanolog_log1(10, fmt, a1)
+ * ============================================================================ */
+
+/* Generic logging - No arguments */
+#define cnanolog_log(level, format) \
+    CNANOLOG_LOG0(level, format)
+
+/* Generic logging - With arguments (up to 8) */
+#define cnanolog_log1(level, format, a1) \
+    CNANOLOG_LOG_ARGS(level, format, a1)
+#define cnanolog_log2(level, format, a1, a2) \
+    CNANOLOG_LOG_ARGS(level, format, a1, a2)
+#define cnanolog_log3(level, format, a1, a2, a3) \
+    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3)
+#define cnanolog_log4(level, format, a1, a2, a3, a4) \
+    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3, a4)
+#define cnanolog_log5(level, format, a1, a2, a3, a4, a5) \
+    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3, a4, a5)
+#define cnanolog_log6(level, format, a1, a2, a3, a4, a5, a6) \
+    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3, a4, a5, a6)
+#define cnanolog_log7(level, format, a1, a2, a3, a4, a5, a6, a7) \
+    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3, a4, a5, a6, a7)
+#define cnanolog_log8(level, format, a1, a2, a3, a4, a5, a6, a7, a8) \
+    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3, a4, a5, a6, a7, a8)
 
 /* ============================================================================
  * Statistics and Monitoring

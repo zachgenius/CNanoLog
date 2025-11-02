@@ -2,7 +2,7 @@
  * CNanoLog Decompressor
  *
  * Standalone tool to convert binary log files to human-readable text.
- * Usage: ./decompressor <input.clog> [output.txt]
+ * Usage: ./decompressor [options] <input.clog> [output.txt]
  *        If no output file specified, writes to stdout.
  */
 
@@ -13,6 +13,9 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+
+/* Default output format */
+#define DEFAULT_FORMAT "[%t] [%l] [%f:%L] %m"
 
 /* ============================================================================
  * Dictionary Management
@@ -517,10 +520,144 @@ static void format_log_message(decompressor_ctx_t* ctx, dict_entry_t* dict,
 }
 
 /* ============================================================================
+ * Output Formatting
+ * ============================================================================ */
+
+/**
+ * Format a log entry according to the specified format string.
+ *
+ * Format tokens:
+ *   %t - timestamp (human-readable)
+ *   %T - timestamp (raw ticks)
+ *   %r - relative time since start (seconds)
+ *   %l - log level
+ *   %f - filename
+ *   %L - line number
+ *   %m - formatted message
+ *   %% - literal %
+ */
+static void format_output(const char* format,
+                          const char* timestamp_str,
+                          uint64_t timestamp_raw,
+                          decompressor_ctx_t* ctx,
+                          dict_entry_t* dict,
+                          const char* message,
+                          char* output,
+                          size_t output_size) {
+    const char* fmt_ptr = format;
+    char* out_ptr = output;
+    char* out_end = output + output_size - 1;
+
+    while (*fmt_ptr && out_ptr < out_end) {
+        if (*fmt_ptr == '%') {
+            fmt_ptr++;
+            switch (*fmt_ptr) {
+                case 't': {  /* Human-readable timestamp */
+                    int written = snprintf(out_ptr, out_end - out_ptr, "%s", timestamp_str);
+                    out_ptr += (written > 0) ? written : 0;
+                    fmt_ptr++;
+                    break;
+                }
+                case 'T': {  /* Raw timestamp ticks */
+                    int written = snprintf(out_ptr, out_end - out_ptr, "%llu",
+                                          (unsigned long long)timestamp_raw);
+                    out_ptr += (written > 0) ? written : 0;
+                    fmt_ptr++;
+                    break;
+                }
+                case 'r': {  /* Relative time in seconds */
+                    uint64_t elapsed_ticks = timestamp_raw - ctx->start_timestamp;
+                    double elapsed_seconds = (double)elapsed_ticks / ctx->timestamp_frequency;
+                    int written = snprintf(out_ptr, out_end - out_ptr, "%.9f", elapsed_seconds);
+                    out_ptr += (written > 0) ? written : 0;
+                    fmt_ptr++;
+                    break;
+                }
+                case 'l': {  /* Log level */
+                    int written = snprintf(out_ptr, out_end - out_ptr, "%s",
+                                          level_to_string(dict->log_level));
+                    out_ptr += (written > 0) ? written : 0;
+                    fmt_ptr++;
+                    break;
+                }
+                case 'f': {  /* Filename */
+                    int written = snprintf(out_ptr, out_end - out_ptr, "%s", dict->filename);
+                    out_ptr += (written > 0) ? written : 0;
+                    fmt_ptr++;
+                    break;
+                }
+                case 'L': {  /* Line number */
+                    int written = snprintf(out_ptr, out_end - out_ptr, "%u", dict->line_number);
+                    out_ptr += (written > 0) ? written : 0;
+                    fmt_ptr++;
+                    break;
+                }
+                case 'm': {  /* Message */
+                    int written = snprintf(out_ptr, out_end - out_ptr, "%s", message);
+                    out_ptr += (written > 0) ? written : 0;
+                    fmt_ptr++;
+                    break;
+                }
+                case '%': {  /* Literal % */
+                    if (out_ptr < out_end) {
+                        *out_ptr++ = '%';
+                    }
+                    fmt_ptr++;
+                    break;
+                }
+                default: {  /* Unknown format, copy as-is */
+                    if (out_ptr < out_end) {
+                        *out_ptr++ = '%';
+                    }
+                    if (out_ptr < out_end && *fmt_ptr) {
+                        *out_ptr++ = *fmt_ptr++;
+                    }
+                    break;
+                }
+            }
+        } else {
+            *out_ptr++ = *fmt_ptr++;
+        }
+    }
+    *out_ptr = '\0';
+}
+
+/* ============================================================================
+ * Help and Usage
+ * ============================================================================ */
+
+static void print_help(const char* program_name) {
+    fprintf(stderr, "CNanoLog Decompressor - Convert binary log files to text\n\n");
+    fprintf(stderr, "Usage: %s [options] <input.clog> [output.txt]\n\n", program_name);
+    fprintf(stderr, "Options:\n");
+    fprintf(stderr, "  -f, --format <fmt>   Specify output format (default: \"[%%t] [%%l] [%%f:%%L] %%m\")\n");
+    fprintf(stderr, "  -h, --help           Show this help message\n\n");
+    fprintf(stderr, "Format tokens:\n");
+    fprintf(stderr, "  %%t   Human-readable timestamp (YYYY-MM-DD HH:MM:SS.nnnnnnnnn)\n");
+    fprintf(stderr, "  %%T   Raw timestamp (CPU ticks)\n");
+    fprintf(stderr, "  %%r   Relative time since start (seconds with nanosecond precision)\n");
+    fprintf(stderr, "  %%l   Log level (INFO, WARN, ERROR, DEBUG)\n");
+    fprintf(stderr, "  %%f   Source filename\n");
+    fprintf(stderr, "  %%L   Line number\n");
+    fprintf(stderr, "  %%m   Formatted log message\n");
+    fprintf(stderr, "  %%%%   Literal %% character\n\n");
+    fprintf(stderr, "Examples:\n");
+    fprintf(stderr, "  # Default format\n");
+    fprintf(stderr, "  %s app.clog\n\n", program_name);
+    fprintf(stderr, "  # Custom format: only timestamp and message\n");
+    fprintf(stderr, "  %s -f \"%%t: %%m\" app.clog\n\n", program_name);
+    fprintf(stderr, "  # CSV format\n");
+    fprintf(stderr, "  %s -f \"%%t,%%l,%%f,%%L,%%m\" app.clog app.csv\n\n", program_name);
+    fprintf(stderr, "  # JSON-like format\n");
+    fprintf(stderr, "  %s -f '{\"time\":\"%%t\",\"level\":\"%%l\",\"msg\":\"%%m\"}' app.clog\n\n", program_name);
+    fprintf(stderr, "If output file is not specified, writes to stdout.\n");
+}
+
+/* ============================================================================
  * Main Decompression
  * ============================================================================ */
 
-static int decompress_file(const char* input_path, FILE* output_fp) {
+static int decompress_file(const char* input_path, FILE* output_fp, const char* output_format) {
     FILE* input_fp = NULL;
     decompressor_ctx_t ctx;
     memset(&ctx, 0, sizeof(ctx));
@@ -668,13 +805,11 @@ static int decompress_file(const char* input_path, FILE* output_fp) {
         char message[2048];
         format_log_message(&ctx, dict, data_to_format, message, sizeof(message));
 
-        /* Output formatted log line */
-        fprintf(output_fp, "[%s] [%s] [%s:%u] %s\n",
-                timestamp_str,
-                level_to_string(dict->log_level),
-                dict->filename,
-                dict->line_number,
-                message);
+        /* Format and output log line according to output format */
+        char formatted_line[4096];
+        format_output(output_format, timestamp_str, timestamp, &ctx, dict, message,
+                     formatted_line, sizeof(formatted_line));
+        fprintf(output_fp, "%s\n", formatted_line);
 
         entries_processed++;
     }
@@ -704,27 +839,63 @@ cleanup:
  * ============================================================================ */
 
 int main(int argc, char** argv) {
-    if (argc < 2 || argc > 3) {
-        fprintf(stderr, "Usage: %s <input.clog> [output.txt]\n", argv[0]);
-        fprintf(stderr, "  If output file not specified, writes to stdout\n");
+    const char* input_path = NULL;
+    const char* output_path = NULL;
+    const char* output_format = DEFAULT_FORMAT;
+    FILE* output_fp = stdout;
+
+    /* Parse command-line arguments */
+    int i = 1;
+    while (i < argc) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            print_help(argv[0]);
+            return 0;
+        } else if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--format") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: %s requires an argument\n", argv[i]);
+                fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
+                return 1;
+            }
+            output_format = argv[i + 1];
+            i += 2;
+        } else if (argv[i][0] == '-') {
+            fprintf(stderr, "Error: Unknown option '%s'\n", argv[i]);
+            fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
+            return 1;
+        } else {
+            /* Positional argument */
+            if (input_path == NULL) {
+                input_path = argv[i];
+            } else if (output_path == NULL) {
+                output_path = argv[i];
+            } else {
+                fprintf(stderr, "Error: Too many arguments\n");
+                fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
+                return 1;
+            }
+            i++;
+        }
+    }
+
+    /* Validate required arguments */
+    if (input_path == NULL) {
+        fprintf(stderr, "Error: No input file specified\n");
+        fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
         return 1;
     }
 
-    const char* input_path = argv[1];
-    FILE* output_fp = stdout;
-
     /* Open output file if specified */
-    if (argc == 3) {
-        output_fp = fopen(argv[2], "w");
+    if (output_path != NULL) {
+        output_fp = fopen(output_path, "w");
         if (output_fp == NULL) {
             fprintf(stderr, "Error: Cannot open output file '%s': %s\n",
-                    argv[2], strerror(errno));
+                    output_path, strerror(errno));
             return 1;
         }
     }
 
     /* Decompress */
-    int ret = decompress_file(input_path, output_fp);
+    int ret = decompress_file(input_path, output_fp, output_format);
 
     /* Close output file */
     if (output_fp != stdout) {

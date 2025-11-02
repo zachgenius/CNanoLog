@@ -21,22 +21,22 @@ int main() {
     /* Test various log levels and argument types */
     printf("2. Writing log entries...\n");
 
-    log_info("Application started");
-    log_info1("Processing count: %d", 42);
-    log_warn1("Warning: threshold exceeded: %d", 100);
-    log_error2("Error code: %d, message: %s", 500, "Internal error");
+    LOG_INFO("Application started");
+    LOG_INFO("Processing count: %d", 42);
+    LOG_WARN("Warning: threshold exceeded: %d", 100);
+    LOG_ERROR("Error code: %d, message: %s", 500, "Internal error");
 
     int x = 10, y = 20;
-    log_debug3("Debug: x=%d, y=%d, sum=%d", x, y, x + y);
+    LOG_DEBUG("Debug: x=%d, y=%d, sum=%d", x, y, x + y);
 
     const char* user = "Alice";
-    log_info1("User %s logged in", user);
+    LOG_INFO("User %s logged in", user);
 
     double pi = 3.14159;
-    log_info1("Pi value: %f", pi);
+    LOG_INFO("Pi value: %f", pi);
 
     unsigned int count = 1000U;
-    log_info1("Count: %u", count);
+    LOG_INFO("Count: %u", count);
 
     printf("   ✓ Wrote 8 log entries\n\n");
 

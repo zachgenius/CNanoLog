@@ -28,7 +28,7 @@ int test_buffer_overflow(void) {
     printf("  Logging %d entries rapidly to fill buffer...\n", iterations);
 
     for (int i = 0; i < iterations; i++) {
-        log_info3("Overflow test: iteration %d, data %d %d",
+        LOG_INFO("Overflow test: iteration %d, data %d %d",
                   i, i * 2, i * 3);
     }
 
@@ -64,7 +64,7 @@ int test_overflow_recovery(void) {
     /* Fill buffer */
     printf("  Step 1: Filling buffer...\n");
     for (int i = 0; i < 50000; i++) {
-        log_info1("Fill phase: %d", i);
+        LOG_INFO("Fill phase: %d", i);
     }
 
     cnanolog_stats_t stats_mid;
@@ -81,7 +81,7 @@ int test_overflow_recovery(void) {
     uint64_t logs_before = stats_mid.total_logs_written;
 
     for (int i = 0; i < 1000; i++) {
-        log_info1("Recovery phase: %d", i);
+        LOG_INFO("Recovery phase: %d", i);
     }
 
     /* Brief wait */
@@ -119,7 +119,7 @@ int test_statistics_accuracy(void) {
     printf("  Logging %d entries...\n", test_logs);
 
     for (int i = 0; i < test_logs; i++) {
-        log_info2("Stats test: %d %d", i, i * 2);
+        LOG_INFO("Stats test: %d %d", i, i * 2);
     }
 
     /* Give time to process */
@@ -155,7 +155,7 @@ void* overflow_thread(void* arg) {
 
     /* Each thread tries to fill the buffer */
     for (int i = 0; i < 30000; i++) {
-        log_info2("Thread %d overflow: iteration %d", thread_id, i);
+        LOG_INFO("Thread %d overflow: iteration %d", thread_id, i);
     }
 
     return NULL;

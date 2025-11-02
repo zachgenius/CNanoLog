@@ -61,13 +61,13 @@ void benchmark_no_args(void) {
 
     /* Warmup */
     for (int i = 0; i < WARMUP_ITERATIONS; i++) {
-        log_info("Warmup");
+        LOG_INFO("Warmup");
     }
 
     /* Benchmark */
     start = rdtsc();
     for (int i = 0; i < BENCH_ITERATIONS; i++) {
-        log_info("Benchmark test");
+        LOG_INFO("Benchmark test");
     }
     end = rdtsc();
 
@@ -84,13 +84,13 @@ void benchmark_one_int(void) {
 
     /* Warmup */
     for (int i = 0; i < WARMUP_ITERATIONS; i++) {
-        log_info1("Warmup %d", i);
+        LOG_INFO("Warmup %d", i);
     }
 
     /* Benchmark */
     start = rdtsc();
     for (int i = 0; i < BENCH_ITERATIONS; i++) {
-        log_info1("Value: %d", i);
+        LOG_INFO("Value: %d", i);
     }
     end = rdtsc();
 
@@ -107,13 +107,13 @@ void benchmark_two_ints(void) {
 
     /* Warmup */
     for (int i = 0; i < WARMUP_ITERATIONS; i++) {
-        log_info2("Warmup %d %d", i, i * 2);
+        LOG_INFO("Warmup %d %d", i, i * 2);
     }
 
     /* Benchmark */
     start = rdtsc();
     for (int i = 0; i < BENCH_ITERATIONS; i++) {
-        log_info2("X=%d Y=%d", i, i * 2);
+        LOG_INFO("X=%d Y=%d", i, i * 2);
     }
     end = rdtsc();
 
@@ -130,13 +130,13 @@ void benchmark_three_ints(void) {
 
     /* Warmup */
     for (int i = 0; i < WARMUP_ITERATIONS; i++) {
-        log_info3("Warmup %d %d %d", i, i * 2, i * 3);
+        LOG_INFO("Warmup %d %d %d", i, i * 2, i * 3);
     }
 
     /* Benchmark */
     start = rdtsc();
     for (int i = 0; i < BENCH_ITERATIONS; i++) {
-        log_info3("X=%d Y=%d Z=%d", i, i * 2, i * 3);
+        LOG_INFO("X=%d Y=%d Z=%d", i, i * 2, i * 3);
     }
     end = rdtsc();
 
@@ -154,13 +154,13 @@ void benchmark_one_string(void) {
 
     /* Warmup */
     for (int i = 0; i < WARMUP_ITERATIONS; i++) {
-        log_info1("Warmup %s", str);
+        LOG_INFO("Warmup %s", str);
     }
 
     /* Benchmark */
     start = rdtsc();
     for (int i = 0; i < BENCH_ITERATIONS; i++) {
-        log_info1("Name: %s", str);
+        LOG_INFO("Name: %s", str);
     }
     end = rdtsc();
 
@@ -183,7 +183,7 @@ void benchmark_with_preallocate(void) {
 
     /* First log WITHOUT preallocate (measures allocation overhead) */
     uint64_t start = rdtsc();
-    log_info("First log");
+    LOG_INFO("First log");
     uint64_t end = rdtsc();
     uint64_t first_log_cycles = end - start;
 
@@ -193,7 +193,7 @@ void benchmark_with_preallocate(void) {
 
     /* Subsequent logs are fast */
     start = rdtsc();
-    log_info("Second log");
+    LOG_INFO("Second log");
     end = rdtsc();
     uint64_t second_log_cycles = end - start;
 
@@ -223,7 +223,7 @@ void benchmark_throughput(void) {
     clock_gettime(CLOCK_MONOTONIC, &start);
 
     for (int i = 0; i < iterations; i++) {
-        log_info1("Throughput test %d", i);
+        LOG_INFO("Throughput test %d", i);
     }
 
     clock_gettime(CLOCK_MONOTONIC, &end);
@@ -257,7 +257,7 @@ void* worker_thread(void* arg) {
     args->start_time = rdtsc();
 
     for (int i = 0; i < args->iterations; i++) {
-        log_info2("Thread %d: iteration %d", args->thread_id, i);
+        LOG_INFO("Thread %d: iteration %d", args->thread_id, i);
     }
 
     args->end_time = rdtsc();

@@ -19,12 +19,12 @@ int main(void) {
     }
 
     // Test basic logging
-    log_info("Single-header test started");
-    log_info1("Test with one arg: %d", 42);
-    log_info2("Test with two args: %d, %s", 123, "hello");
-    log_warn("Warning message");
-    log_error1("Error with code: %d", -1);
-    log_debug("Debug message");
+    LOG_INFO("Single-header test started");
+    LOG_INFO("Test with one arg: %d", 42);
+    LOG_INFO("Test with two args: %d, %s", 123, "hello");
+    LOG_WARN("Warning message");
+    LOG_ERROR("Error with code: %d", -1);
+    LOG_DEBUG("Debug message");
 
     // Test statistics
     cnanolog_stats_t stats;

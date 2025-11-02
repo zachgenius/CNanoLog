@@ -69,16 +69,16 @@ int setup_logging(void) {
         int target_core = num_cores - 1;
         if (cnanolog_set_writer_affinity(target_core) == 0) {
             printf("[SETUP] Writer thread pinned to core %d\n", target_core);
-            log_info1("Writer thread affinity set to core %d", target_core);
+            LOG_INFO("Writer thread affinity set to core %d", target_core);
         } else {
             printf("[SETUP] Failed to set CPU affinity (continuing anyway)\n");
-            log_warn("Failed to set CPU affinity");
+            LOG_WARN("Failed to set CPU affinity");
         }
     } else {
         printf("[SETUP] Skipping CPU affinity (only %d cores)\n", num_cores);
     }
 
-    log_info("Logging system initialized successfully");
+    LOG_INFO("Logging system initialized successfully");
     return 0;
 }
 
@@ -90,7 +90,7 @@ void check_log_rotation(void) {
     uint64_t size_mb = stats.total_bytes_written / (1024 * 1024);
 
     if (size_mb >= LOG_ROTATION_SIZE_MB) {
-        log_warn1("Log rotation triggered (size: %llu MB)", (unsigned long long)size_mb);
+        LOG_WARN("Log rotation triggered (size: %llu MB)", (unsigned long long)size_mb);
 
         printf("[ROTATE] Rotating log file (size: %llu MB)\n", (unsigned long long)size_mb);
 
@@ -113,7 +113,7 @@ void check_log_rotation(void) {
         }
 
         cnanolog_preallocate();
-        log_info1("Log rotated, old file: %s", old_name);
+        LOG_INFO("Log rotated, old file: %s", old_name);
 
         printf("[ROTATE] Log rotation complete\n");
     }
@@ -124,7 +124,7 @@ void handle_client_request(int client_id, const char* request_type) {
     /* Simulate different types of requests */
     int processing_time_ms = rand() % 100;  // 0-100ms
 
-    log_info3("Client %d: %s request received (expected: %d ms)",
+    LOG_INFO("Client %d: %s request received (expected: %d ms)",
              client_id, request_type, processing_time_ms);
 
     /* Simulate processing */
@@ -136,18 +136,18 @@ void handle_client_request(int client_id, const char* request_type) {
     if (success < 95) {
         /* Success */
         int status_code = 200;
-        log_info3("Client %d: %s completed (status: %d)",
+        LOG_INFO("Client %d: %s completed (status: %d)",
                  client_id, request_type, status_code);
     } else if (success < 98) {
         /* Client error */
         int status_code = 400;
-        log_warn3("Client %d: %s failed (status: %d)",
+        LOG_WARN("Client %d: %s failed (status: %d)",
                  client_id, request_type, status_code);
     } else {
         /* Server error */
         int status_code = 500;
         const char* error = "Internal server error";
-        log_error3("Client %d: %s failed - %s (status: %d)",
+        LOG_ERROR("Client %d: %s failed - %s (status: %d)",
                   client_id, request_type, error);
     }
 }
@@ -158,7 +158,7 @@ void* worker_thread(void* arg) {
 
     cnanolog_preallocate();
 
-    log_info1("Worker thread %d started", worker_id);
+    LOG_INFO("Worker thread %d started", worker_id);
 
     const char* request_types[] = {
         "GET", "POST", "PUT", "DELETE"
@@ -175,7 +175,7 @@ void* worker_thread(void* arg) {
         usleep(10000 + rand() % 20000);  // 10-30ms
     }
 
-    log_info1("Worker thread %d stopped", worker_id);
+    LOG_INFO("Worker thread %d stopped", worker_id);
 
     return NULL;
 }
@@ -186,7 +186,7 @@ void* monitoring_thread(void* arg) {
 
     cnanolog_preallocate();
 
-    log_info("Monitoring thread started");
+    LOG_INFO("Monitoring thread started");
 
     cnanolog_stats_t prev_stats = {0};
 
@@ -206,11 +206,11 @@ void* monitoring_thread(void* arg) {
         }
 
         /* Log monitoring report */
-        log_info2("Monitor: %llu logs, drop_rate=%.2f%%",
+        LOG_INFO("Monitor: %llu logs, drop_rate=%.2f%%",
                  (unsigned long long)logs_delta, (int)(drop_rate * 100));
 
         if (drop_rate > 1.0) {
-            log_warn1("High drop rate detected: %.2f%%", (int)(drop_rate * 100));
+            LOG_WARN("High drop rate detected: %.2f%%", (int)(drop_rate * 100));
         }
 
         prev_stats = stats;
@@ -219,7 +219,7 @@ void* monitoring_thread(void* arg) {
         check_log_rotation();
     }
 
-    log_info("Monitoring thread stopped");
+    LOG_INFO("Monitoring thread stopped");
 
     return NULL;
 }
@@ -243,8 +243,8 @@ int main(void) {
         return 1;
     }
 
-    log_info("Server starting");
-    log_info1("Server port: %d", SERVER_PORT);
+    LOG_INFO("Server starting");
+    LOG_INFO("Server port: %d", SERVER_PORT);
 
     printf("\n[SERVER] Server started on port %d\n", SERVER_PORT);
     printf("[SERVER] Press Ctrl+C to stop gracefully\n\n");
@@ -252,7 +252,7 @@ int main(void) {
     /* Start monitoring thread */
     cnanolog_thread_t monitor_tid;
     if (cnanolog_thread_create(&monitor_tid, monitoring_thread, NULL) != 0) {
-        log_error("Failed to start monitoring thread");
+        LOG_ERROR("Failed to start monitoring thread");
         return 1;
     }
 
@@ -264,12 +264,12 @@ int main(void) {
     for (int i = 0; i < num_workers; i++) {
         worker_ids[i] = i;
         if (cnanolog_thread_create(&worker_tids[i], worker_thread, &worker_ids[i]) != 0) {
-            log_error1("Failed to start worker thread %d", i);
+            LOG_ERROR("Failed to start worker thread %d", i);
             return 1;
         }
     }
 
-    log_info1("Started %d worker threads", num_workers);
+    LOG_INFO("Started %d worker threads", num_workers);
     printf("[SERVER] Started %d worker threads\n", num_workers);
     printf("[SERVER] Server is running...\n\n");
 
@@ -280,7 +280,7 @@ int main(void) {
 
     /* Graceful shutdown */
     printf("\n[SHUTDOWN] Stopping server...\n");
-    log_info("Server shutdown initiated");
+    LOG_INFO("Server shutdown initiated");
 
     /* Wait for all threads to complete */
     printf("[SHUTDOWN] Waiting for worker threads...\n");
@@ -291,7 +291,7 @@ int main(void) {
     printf("[SHUTDOWN] Waiting for monitoring thread...\n");
     cnanolog_thread_join(monitor_tid, NULL);
 
-    log_info("All threads stopped");
+    LOG_INFO("All threads stopped");
 
     /* Final statistics */
     printf("\n╔══════════════════════════════════════════════════════╗\n");
@@ -320,7 +320,7 @@ int main(void) {
     printf("\n[SHUTDOWN] Shutting down logger...\n");
     cnanolog_shutdown();
 
-    log_info("Server shutdown complete");
+    LOG_INFO("Server shutdown complete");
 
     printf("\n╔══════════════════════════════════════════════════════╗\n");
     printf("║   Server Stopped Successfully                        ║\n");

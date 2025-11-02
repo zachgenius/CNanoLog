@@ -34,7 +34,7 @@ extern "C" {
  * Limits
  * ============================================================================ */
 
-#define CNANOLOG_MAX_ARGS       16      /* Maximum arguments per log statement */
+#define CNANOLOG_MAX_ARGS       50      /* Maximum arguments per log statement */
 #define CNANOLOG_MAX_ENTRY_SIZE 65535   /* Maximum size of entry data (uint16_t) */
 
 /* ============================================================================
@@ -158,8 +158,8 @@ typedef struct {
 } __attribute__((packed)) cnanolog_dict_entry_t;
 
 /* Compile-time size check */
-CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_dict_entry_t) == 30,
-                       "Dictionary entry must be exactly 30 bytes");
+CNANOLOG_STATIC_ASSERT(sizeof(cnanolog_dict_entry_t) == 64,
+                       "Dictionary entry must be exactly 64 bytes (14 fixed + 50 arg_types)");
 
 /* ============================================================================
  * Level Dictionary (for custom log levels)

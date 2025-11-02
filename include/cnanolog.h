@@ -215,121 +215,40 @@ void _cnanolog_log_binary(uint32_t log_id,
         _cnanolog_log_binary(__cnanolog_cached_id, \
                             __cnanolog_num_args, \
                             __cnanolog_arg_types, \
-                            __VA_ARGS__); \
+                            ##__VA_ARGS__); \
     } while(0)
 
 /* ============================================================================
- * Convenient Level-Specific Macros
+ * Logging Macros
+ *
+ * These variadic macros automatically handle any number of arguments (0-50).
+ * No need to count arguments or use numbered versions!
  *
  * Usage:
- *   log_info("message")              - No arguments
- *   log_info1("count: %d", 42)       - One argument
- *   log_info2("x=%d y=%d", x, y)     - Two arguments
- *   ... etc
+ *   LOG_INFO("message")                    // 0 args
+ *   LOG_INFO("count: %d", 42)              // 1 arg
+ *   LOG_INFO("x=%d y=%d z=%d", x, y, z)    // 3 args
+ *   LOG_INFO("50 args: %d %d...", 1, ...)  // up to 50 args
  * ============================================================================ */
+#define LOG_INFO(format, ...) \
+    CNANOLOG_LOG_ARGS(LOG_LEVEL_INFO, format, ##__VA_ARGS__)
 
-/* INFO - No arguments */
-#define log_info(format) \
-    CNANOLOG_LOG0(LOG_LEVEL_INFO, format)
+#define LOG_WARN(format, ...) \
+    CNANOLOG_LOG_ARGS(LOG_LEVEL_WARN, format, ##__VA_ARGS__)
 
-/* INFO - With arguments (up to 8) */
-#define log_info1(format, a1) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_INFO, format, a1)
-#define log_info2(format, a1, a2) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_INFO, format, a1, a2)
-#define log_info3(format, a1, a2, a3) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_INFO, format, a1, a2, a3)
-#define log_info4(format, a1, a2, a3, a4) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_INFO, format, a1, a2, a3, a4)
-#define log_info5(format, a1, a2, a3, a4, a5) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_INFO, format, a1, a2, a3, a4, a5)
-#define log_info6(format, a1, a2, a3, a4, a5, a6) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_INFO, format, a1, a2, a3, a4, a5, a6)
-#define log_info7(format, a1, a2, a3, a4, a5, a6, a7) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_INFO, format, a1, a2, a3, a4, a5, a6, a7)
-#define log_info8(format, a1, a2, a3, a4, a5, a6, a7, a8) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_INFO, format, a1, a2, a3, a4, a5, a6, a7, a8)
+#define LOG_ERROR(format, ...) \
+    CNANOLOG_LOG_ARGS(LOG_LEVEL_ERROR, format, ##__VA_ARGS__)
 
-/* WARN - No arguments */
-#define log_warn(format) \
-    CNANOLOG_LOG0(LOG_LEVEL_WARN, format)
+#define LOG_DEBUG(format, ...) \
+    CNANOLOG_LOG_ARGS(LOG_LEVEL_DEBUG, format, ##__VA_ARGS__)
 
-/* WARN - With arguments */
-#define log_warn1(format, a1) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_WARN, format, a1)
-#define log_warn2(format, a1, a2) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_WARN, format, a1, a2)
-#define log_warn3(format, a1, a2, a3) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_WARN, format, a1, a2, a3)
-#define log_warn4(format, a1, a2, a3, a4) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_WARN, format, a1, a2, a3, a4)
-
-/* ERROR - No arguments */
-#define log_error(format) \
-    CNANOLOG_LOG0(LOG_LEVEL_ERROR, format)
-
-/* ERROR - With arguments */
-#define log_error1(format, a1) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_ERROR, format, a1)
-#define log_error2(format, a1, a2) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_ERROR, format, a1, a2)
-#define log_error3(format, a1, a2, a3) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_ERROR, format, a1, a2, a3)
-#define log_error4(format, a1, a2, a3, a4) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_ERROR, format, a1, a2, a3, a4)
-
-/* DEBUG - No arguments */
-#define log_debug(format) \
-    CNANOLOG_LOG0(LOG_LEVEL_DEBUG, format)
-
-/* DEBUG - With arguments */
-#define log_debug1(format, a1) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_DEBUG, format, a1)
-#define log_debug2(format, a1, a2) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_DEBUG, format, a1, a2)
-#define log_debug3(format, a1, a2, a3) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_DEBUG, format, a1, a2, a3)
-#define log_debug4(format, a1, a2, a3, a4) \
-    CNANOLOG_LOG_ARGS(LOG_LEVEL_DEBUG, format, a1, a2, a3, a4)
-
-/* ============================================================================
- * Generic Logging Macros (for custom levels)
- *
- * Usage with custom levels:
- *   // First register the level
+/* For custom log levels, use CNANOLOG_LOG(level, format, ...)
+ * Example:
  *   cnanolog_register_level("METRIC", 10);
- *
- *   // Then use the generic macros
- *   cnanolog_log(10, "No arguments");
- *   cnanolog_log1(10, "One arg: %d", value);
- *   cnanolog_log2(10, "Two args: %d %s", val, str);
- *
- *   // Or define convenience macros
- *   #define log_metric(fmt) cnanolog_log(10, fmt)
- *   #define log_metric1(fmt, a1) cnanolog_log1(10, fmt, a1)
- * ============================================================================ */
-
-/* Generic logging - No arguments */
-#define cnanolog_log(level, format) \
-    CNANOLOG_LOG0(level, format)
-
-/* Generic logging - With arguments (up to 8) */
-#define cnanolog_log1(level, format, a1) \
-    CNANOLOG_LOG_ARGS(level, format, a1)
-#define cnanolog_log2(level, format, a1, a2) \
-    CNANOLOG_LOG_ARGS(level, format, a1, a2)
-#define cnanolog_log3(level, format, a1, a2, a3) \
-    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3)
-#define cnanolog_log4(level, format, a1, a2, a3, a4) \
-    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3, a4)
-#define cnanolog_log5(level, format, a1, a2, a3, a4, a5) \
-    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3, a4, a5)
-#define cnanolog_log6(level, format, a1, a2, a3, a4, a5, a6) \
-    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3, a4, a5, a6)
-#define cnanolog_log7(level, format, a1, a2, a3, a4, a5, a6, a7) \
-    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3, a4, a5, a6, a7)
-#define cnanolog_log8(level, format, a1, a2, a3, a4, a5, a6, a7, a8) \
-    CNANOLOG_LOG_ARGS(level, format, a1, a2, a3, a4, a5, a6, a7, a8)
+ *   CNANOLOG_LOG(10, "CPU: %d%%", usage);
+ */
+#define CNANOLOG_LOG(level, format, ...) \
+    CNANOLOG_LOG_ARGS(level, format, ##__VA_ARGS__)
 
 /* ============================================================================
  * Statistics and Monitoring

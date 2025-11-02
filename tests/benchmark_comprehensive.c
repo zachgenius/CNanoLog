@@ -241,7 +241,7 @@ void run_single_threaded_benchmark(scale_config_t* scale, benchmark_result_t* re
 
     /* Warmup */
     for (int i = 0; i < scale->warmup_logs; i++) {
-        log_info1("Warmup %d", i);
+        LOG_INFO("Warmup %d", i);
     }
 
     reset_latency_samples();
@@ -255,7 +255,7 @@ void run_single_threaded_benchmark(scale_config_t* scale, benchmark_result_t* re
 
     for (uint64_t i = 0; i < scale->num_logs; i++) {
         uint64_t start_cycles = rdtsc();
-        log_info3("Benchmark iteration %d with values %d and %d", (int)i, (int)(i * 2), (int)(i * 3));
+        LOG_INFO("Benchmark iteration %d with values %d and %d", (int)i, (int)(i * 2), (int)(i * 3));
         uint64_t end_cycles = rdtsc();
 
         if (i % sample_interval == 0) {
@@ -355,7 +355,7 @@ void* mt_worker_thread(void* arg) {
     args->start_time_sec = ts.tv_sec + ts.tv_nsec / 1e9;
 
     for (uint64_t i = 0; i < args->iterations; i++) {
-        log_info3("Thread %d: iteration %d value %d",
+        LOG_INFO("Thread %d: iteration %d value %d",
                  args->thread_id, (int)i, (int)(i * args->thread_id));
     }
 

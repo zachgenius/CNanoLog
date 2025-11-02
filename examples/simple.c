@@ -7,16 +7,16 @@ int main() {
         return 1;
     }
 
-    log_info("Application starting up.");
+    LOG_INFO("Application starting up.");
 
     for (int i = 0; i < 10; ++i) {
-        log_debug1("Loop iteration %d", i);
+        LOG_DEBUG("Loop iteration %d", i);
     }
 
-    log_warn("This is a warning message.");
-    log_error("This is an error message. Something went wrong!");
+    LOG_WARN("This is a warning message.");
+    LOG_ERROR("This is an error message. Something went wrong!");
 
-    log_info("Application shutting down.");
+    LOG_INFO("Application shutting down.");
 
     cnanolog_shutdown();
 

@@ -39,7 +39,7 @@ void test_double_init(void) {
     }
 
     /* Log something to verify it still works */
-    log_info("Logger still works after double init attempt");
+    LOG_INFO("Logger still works after double init attempt");
     printf("  ✓ Logging still works\n");
 
     cnanolog_shutdown();
@@ -52,7 +52,7 @@ void test_log_before_init(void) {
     printf("  Attempting to log before initialization...\n");
 
     /* This should be safe - library should handle gracefully */
-    log_info("This log happens before init");
+    LOG_INFO("This log happens before init");
 
     printf("  ✓ No crash (library handled it gracefully)\n");
     printf("  Note: Log was likely dropped or ignored\n");
@@ -65,7 +65,7 @@ void test_multiple_shutdown(void) {
     printf("  Initializing logger...\n");
     cnanolog_init("error_test2.clog");
 
-    log_info("Test log before first shutdown");
+    LOG_INFO("Test log before first shutdown");
 
     printf("  Calling shutdown first time...\n");
     cnanolog_shutdown();
@@ -76,7 +76,7 @@ void test_multiple_shutdown(void) {
     printf("  ✓ Second shutdown handled safely\n");
 
     printf("  Attempting to log after shutdown...\n");
-    log_info("This log happens after shutdown");
+    LOG_INFO("This log happens after shutdown");
     printf("  ✓ No crash (library handled it gracefully)\n");
 }
 
@@ -101,7 +101,7 @@ void test_invalid_paths(void) {
     result = cnanolog_init("valid_error_test.clog");
     if (result == 0) {
         printf("  ✓ Successfully opened valid path\n");
-        log_info("Test log with valid path");
+        LOG_INFO("Test log with valid path");
         cnanolog_shutdown();
     }
 }
@@ -137,7 +137,7 @@ void test_invalid_affinity(void) {
     }
 
     /* Verify logging still works */
-    log_info("Logging after affinity tests");
+    LOG_INFO("Logging after affinity tests");
     printf("  ✓ Logging still works\n");
 
     cnanolog_shutdown();
@@ -155,18 +155,18 @@ void test_extreme_logging(void) {
     memset(long_string, 'X', sizeof(long_string) - 1);
     long_string[sizeof(long_string) - 1] = '\0';
 
-    log_info1("Long string test: %s", long_string);
+    LOG_INFO("Long string test: %s", long_string);
     printf("  ✓ Long string handled\n");
 
     /* Very large numbers */
     printf("  Testing with large numbers...\n");
-    log_info1("Large number: %d", 2147483647);  // INT_MAX
+    LOG_INFO("Large number: %d", 2147483647);  // INT_MAX
     printf("  ✓ Large numbers handled\n");
 
     /* Rapid logging */
     printf("  Testing rapid logging (10,000 logs)...\n");
     for (int i = 0; i < 10000; i++) {
-        log_info1("Rapid log %d", i);
+        LOG_INFO("Rapid log %d", i);
     }
     printf("  ✓ Rapid logging completed\n");
 
@@ -205,7 +205,7 @@ void test_statistics_edge_cases(void) {
 
     /* Log some messages */
     for (int i = 0; i < 100; i++) {
-        log_info1("Stats test %d", i);
+        LOG_INFO("Stats test %d", i);
     }
 
     /* Reset stats */
@@ -219,7 +219,7 @@ void test_statistics_edge_cases(void) {
 
     /* Log more and verify counting resumes */
     for (int i = 0; i < 50; i++) {
-        log_info1("After reset %d", i);
+        LOG_INFO("After reset %d", i);
     }
 
     cnanolog_get_stats(&stats);
@@ -244,7 +244,7 @@ void test_preallocate_edge_cases(void) {
     printf("  ✓ Multiple preallocate calls handled safely\n");
 
     /* Verify logging works */
-    log_info("Logging after multiple preallocate calls");
+    LOG_INFO("Logging after multiple preallocate calls");
     printf("  ✓ Logging works normally\n");
 
     cnanolog_shutdown();

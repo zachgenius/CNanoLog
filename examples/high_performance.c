@@ -45,7 +45,7 @@ void benchmark_logging(const char* description, int num_logs) {
     clock_gettime(CLOCK_MONOTONIC, &start);
 
     for (int i = 0; i < num_logs; i++) {
-        log_info2("Benchmark message %d: value=%d", i, i * 2);
+        LOG_INFO("Benchmark message %d: value=%d", i, i * 2);
     }
 
     clock_gettime(CLOCK_MONOTONIC, &end);

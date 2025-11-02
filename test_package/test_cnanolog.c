@@ -12,8 +12,8 @@ int main(void) {
 
     /* Log some messages */
     log_info("Conan package test started");
-    log_info1("Test with integer: %d", 42);
-    log_info2("Test with multiple args: %d and %d", 10, 20);
+    LOG_Uinfo("Test with integer: %d", 42);
+    LOG_Uinfo("Test with multiple args: %d and %d", 10, 20);
     log_warn("This is a warning");
     log_error("This is an error (test only)");
 

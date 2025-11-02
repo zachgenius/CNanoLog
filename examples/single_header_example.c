@@ -24,16 +24,16 @@ int main(void) {
     printf("Logger initialized. Generating sample logs...\n");
 
     // Test various log levels and argument counts
-    log_info("Application started");
-    log_info1("Processing %d items", 100);
-    log_info2("Server running on %s:%d", "localhost", 8080);
-    log_warn1("Memory usage: %d MB", 512);
-    log_error1("Failed to connect to database (error: %d)", -1);
-    log_debug("Debug information");
+    LOG_INFO("Application started");
+    LOG_INFO("Processing %d items", 100);
+    LOG_INFO("Server running on %s:%d", "localhost", 8080);
+    LOG_WARN("Memory usage: %d MB", 512);
+    LOG_ERROR("Failed to connect to database (error: %d)", -1);
+    LOG_DEBUG("Debug information");
 
     // Test with different data types
-    log_info3("Position: x=%d, y=%d, z=%d", 10, 20, 30);
-    log_info2("Temperature: %.2f°C, Humidity: %d%%", 23.5, 65);
+    LOG_INFO("Position: x=%d, y=%d, z=%d", 10, 20, 30);
+    LOG_INFO("Temperature: %.2f°C, Humidity: %d%%", 23.5, 65);
 
     // Get statistics
     cnanolog_stats_t stats;

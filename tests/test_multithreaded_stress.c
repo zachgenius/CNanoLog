@@ -35,15 +35,15 @@ void* aggressive_logger(void* arg) {
 
     /* Log aggressively */
     for (int i = 0; i < args->iterations; i++) {
-        log_info3("Round %d, Thread %d: iteration %d",
+        LOG_INFO("Round %d, Thread %d: iteration %d",
                   args->round, args->thread_id, i);
 
         /* Mix in different log types */
         if (i % 10 == 0) {
-            log_warn1("Warning from thread %d", args->thread_id);
+            LOG_WARN("Warning from thread %d", args->thread_id);
         }
         if (i % 100 == 0) {
-            log_error2("Error: thread=%d, count=%d", args->thread_id, i);
+            LOG_ERROR("Error: thread=%d, count=%d", args->thread_id, i);
         }
     }
 
@@ -134,7 +134,7 @@ void* burst_logger(void* arg) {
     /* Burst of logs with no delays */
     for (int burst = 0; burst < 5; burst++) {
         for (int i = 0; i < 10000; i++) {
-            log_info2("Burst %d: item %d", burst, i);
+            LOG_INFO("Burst %d: item %d", burst, i);
         }
 
         /* Tiny pause between bursts */
@@ -194,11 +194,11 @@ void* mixed_args_logger(void* arg) {
 
     for (int i = 0; i < 20000; i++) {
         /* Mix different argument types */
-        log_info("No args");
-        log_info1("One int: %d", i);
-        log_info2("Two ints: %d %d", i, i * 2);
-        log_info3("Three ints: %d %d %d", i, i * 2, i * 3);
-        log_info1("String: %s", strings[i % 4]);
+        LOG_INFO("No args");
+        LOG_INFO("One int: %d", i);
+        LOG_INFO("Two ints: %d %d", i, i * 2);
+        LOG_INFO("Three ints: %d %d %d", i, i * 2, i * 3);
+        LOG_INFO("String: %s", strings[i % 4]);
     }
 
     return NULL;

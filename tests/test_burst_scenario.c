@@ -53,7 +53,7 @@ void test_burst_pattern(int cpu_core) {
     printf("Phase 1: Normal rate logging...\n");
     struct timespec sleep_time = {0, 10000};  /* 10 microseconds between logs */
     for (int i = 0; i < 100000; i++) {
-        log_info2("Normal operation log %d: status=%d", i, 200);
+        LOG_INFO("Normal operation log %d: status=%d", i, 200);
         nanosleep(&sleep_time, NULL);  /* Pace the logging */
     }
 
@@ -71,7 +71,7 @@ void test_burst_pattern(int cpu_core) {
     clock_gettime(CLOCK_MONOTONIC, &burst_start);
 
     for (int i = 0; i < 5000000; i++) {
-        log_info2("Burst log %d: value=%d", i, i * 2);
+        LOG_INFO("Burst log %d: value=%d", i, i * 2);
     }
 
     clock_gettime(CLOCK_MONOTONIC, &burst_end);
@@ -96,7 +96,7 @@ void test_burst_pattern(int cpu_core) {
     /* Phase 3: Back to normal - 100K logs/sec for 1 second */
     printf("\nPhase 3: Back to normal rate...\n");
     for (int i = 0; i < 100000; i++) {
-        log_info2("Post-burst log %d: status=%d", i, 200);
+        LOG_INFO("Post-burst log %d: status=%d", i, 200);
         nanosleep(&sleep_time, NULL);
     }
 

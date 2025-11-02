@@ -102,13 +102,13 @@ int main(void) {
         return 1;
     }
 
-    // Log at different levels
-    log_info("Application started");
-    log_warn("Low memory: %d MB available", available_mb);
-    log_error("Connection failed: %s (code: %d)", error_msg, error_code);
+    // Log at different levels (supports 0-50 arguments automatically)
+    LOG_INFO("Application started");
+    LOG_WARN("Low memory: %d MB available", available_mb);
+    LOG_ERROR("Connection failed: %s (code: %d)", error_msg, error_code);
 
-    // Log with multiple arguments
-    log_info3("Position: x=%d y=%d z=%d", x, y, z);
+    // Log with multiple arguments - no need to count!
+    LOG_INFO("Position: x=%d y=%d z=%d", x, y, z);
 
     // Clean shutdown
     cnanolog_shutdown();
@@ -156,11 +156,11 @@ void* worker_thread(void* arg) {
     cnanolog_preallocate();
 
     // Log from thread (lock-free fast path)
-    log_info1("Worker %d started", thread_id);
+    LOG_INFO("Worker %d started", thread_id);
 
     // ... work ...
 
-    log_info1("Worker %d finished", thread_id);
+    LOG_INFO("Worker %d finished", thread_id);
     return NULL;
 }
 
@@ -200,7 +200,7 @@ int main(void) {
     }
 
     // Log messages as usual - rotation happens automatically
-    log_info("Application started with daily rotation");
+    LOG_INFO("Application started with daily rotation");
 
     // Files are created with dates:
     // logs/app-2025-11-02.clog
@@ -273,7 +273,7 @@ int main(void) {
     cnanolog_preallocate();
 
     // Application code with optimized logging
-    log_info("Application started with optimized logging");
+    LOG_INFO("Application started with optimized logging");
 
     cnanolog_shutdown();
     return 0;
@@ -496,15 +496,18 @@ void cnanolog_preallocate(void);  // Call at thread start
 
 ### Logging Macros
 ```c
-log_debug(format, ...)           // Debug level
-log_info(format, ...)            // Info level
-log_warn(format, ...)            // Warning level
-log_error(format, ...)           // Error level
+// Variadic macros - automatically handle 0-50 arguments
+LOG_DEBUG(format, ...)           // Debug level
+LOG_INFO(format, ...)            // Info level
+LOG_WARN(format, ...)            // Warning level
+LOG_ERROR(format, ...)           // Error level
+CNANOLOG_LOG(level, format, ...) // For custom log levels
 
-// Optimized variants for specific argument counts
-log_info1(format, arg1)
-log_info2(format, arg1, arg2)
-log_info3(format, arg1, arg2, arg3)
+// Backward compatible lowercase variants also available
+log_debug(format, ...)           // Alias to LOG_DEBUG
+log_info(format, ...)            // Alias to LOG_INFO
+log_warn(format, ...)            // Alias to LOG_WARN
+log_error(format, ...)           // Alias to LOG_ERROR
 ```
 
 ### Statistics API
@@ -739,10 +742,10 @@ if (stats.dropped_logs > 0) {
 
 ### 4. Use Appropriate Log Levels
 ```c
-log_debug(...)  // Development only (can be compiled out)
-log_info(...)   // Normal operations
-log_warn(...)   // Warnings
-log_error(...)  // Errors and critical events
+LOG_DEBUG(...)  // Development only (can be compiled out)
+LOG_INFO(...)   // Normal operations
+LOG_WARN(...)   // Warnings
+LOG_ERROR(...)  // Errors and critical events
 ```
 
 ### 5. Use Automatic Log Rotation
@@ -764,7 +767,7 @@ cnanolog_init_ex(&config);
 
 ## Limitations
 
-- **Maximum 16 arguments** per log call (configurable via CNANOLOG_MAX_ARGS)
+- **Maximum 50 arguments** per log call (configurable via CNANOLOG_MAX_ARGS)
 - **Binary format** requires decompressor tool (not human-readable)
 - **Drop policy** - logs dropped when buffer full (alternative: blocking mode not yet implemented)
 - **Single output file** - multiple outputs not yet supported (network, syslog, etc.)

@@ -25,51 +25,51 @@ int main(void) {
     printf("Use ../tools/decompressor to view logs\n\n");
 
     /* Log at different levels */
-    log_info("Application started");
-    log_info("This is an informational message");
+    LOG_INFO("Application started");
+    LOG_INFO("This is an informational message");
 
-    log_warn("This is a warning message");
-    log_error("This is an error message");
-    log_debug("This is a debug message");
+    LOG_WARN("This is a warning message");
+    LOG_ERROR("This is an error message");
+    LOG_DEBUG("This is a debug message");
 
     /* Logging with arguments */
     printf("Logging with different argument types...\n");
 
     // Single integer
     int status_code = 200;
-    log_info1("HTTP status code: %d", status_code);
+    LOG_INFO("HTTP status code: %d", status_code);
 
     // Multiple integers
     int x = 10, y = 20, z = 30;
-    log_info3("Position: x=%d y=%d z=%d", x, y, z);
+    LOG_INFO("Position: x=%d y=%d z=%d", x, y, z);
 
     // String argument
     const char* username = "alice";
-    log_info1("User logged in: %s", username);
+    LOG_INFO("User logged in: %s", username);
 
     // Mixed arguments
     const char* operation = "database_query";
     int duration_ms = 42;
-    log_info2("Operation '%s' completed in %d ms", operation, duration_ms);
+    LOG_INFO("Operation '%s' completed in %d ms", operation, duration_ms);
 
     // Numeric values
-    log_info1("Processing item %d", 12345);
-    log_info2("Memory usage: %d KB / %d KB", 512, 1024);
+    LOG_INFO("Processing item %d", 12345);
+    LOG_INFO("Memory usage: %d KB / %d KB", 512, 1024);
 
     // Error scenarios
     int error_code = 500;
     const char* error_msg = "Internal server error";
-    log_error2("Error %d: %s", error_code, error_msg);
+    LOG_ERROR("Error %d: %s", error_code, error_msg);
 
     // Warning with details
     int retry_count = 3;
-    log_warn1("Connection failed, retry attempt %d", retry_count);
+    LOG_WARN("Connection failed, retry attempt %d", retry_count);
 
     /* Performance test - log many messages */
     printf("\nPerformance test: Logging 10,000 messages...\n");
 
     for (int i = 0; i < 10000; i++) {
-        log_info2("Message %d: value=%d", i, i * 2);
+        LOG_INFO("Message %d: value=%d", i, i * 2);
     }
 
     printf("Performance test complete\n");

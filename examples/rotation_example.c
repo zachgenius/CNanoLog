@@ -47,18 +47,18 @@ int main(void) {
 
     /* Log messages */
     printf("Writing sample log messages...\n");
-    log_info("Application started");
-    log_info1("Configuration loaded from %s", "config.json");
-    log_warn1("Cache size limit: %d MB", 256);
+    LOG_INFO("Application started");
+    LOG_INFO("Configuration loaded from %s", "config.json");
+    LOG_WARN("Cache size limit: %d MB", 256);
 
     for (int i = 0; i < 10; i++) {
-        log_info2("Processing request %d of %d", i + 1, 10);
+        LOG_INFO("Processing request %d of %d", i + 1, 10);
         if (i % 3 == 0) {
-            log_debug1("Debug checkpoint at iteration %d", i);
+            LOG_DEBUG("Debug checkpoint at iteration %d", i);
         }
     }
 
-    log_info("All requests processed successfully");
+    LOG_INFO("All requests processed successfully");
 
     /* Get statistics */
     usleep(50000);  /* Wait for background thread */

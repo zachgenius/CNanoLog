@@ -25,7 +25,7 @@ void* monitor_thread(void* arg) {
 
     cnanolog_preallocate();
 
-    log_info("Monitoring thread started");
+    LOG_INFO("Monitoring thread started");
 
     cnanolog_stats_t prev_stats = {0};
     cnanolog_get_stats(&prev_stats);
@@ -67,7 +67,7 @@ void* monitor_thread(void* arg) {
         /* Check for alerts */
         if (drop_rate >= WARNING_THRESHOLD) {
             printf("  ⚠️  WARNING: High drop rate (%.2f%%)!\n", drop_rate);
-            log_error1("High drop rate detected: %.2f%%", (int)(drop_rate * 100));
+            LOG_ERROR("High drop rate detected: %.2f%%", (int)(drop_rate * 100));
 
             printf("      Recommendations:\n");
             printf("        1. Increase STAGING_BUFFER_SIZE\n");
@@ -75,7 +75,7 @@ void* monitor_thread(void* arg) {
             printf("        3. Reduce logging frequency\n");
         } else if (drop_rate >= DROP_RATE_THRESHOLD) {
             printf("  ⚠️  ALERT: Moderate drop rate (%.2f%%)\n", drop_rate);
-            log_warn1("Moderate drop rate: %.2f%%", (int)(drop_rate * 100));
+            LOG_WARN("Moderate drop rate: %.2f%%", (int)(drop_rate * 100));
         } else {
             printf("  ✓  Drop rate is healthy\n");
         }
@@ -91,12 +91,12 @@ void* monitor_thread(void* arg) {
         /* Check if we should exit (for demo purposes, exit after 5 reports) */
         static int report_count = 0;
         if (++report_count >= 5) {
-            log_info("Monitoring thread stopping after 5 reports");
+            LOG_INFO("Monitoring thread stopping after 5 reports");
             break;
         }
     }
 
-    log_info("Monitoring thread stopped");
+    LOG_INFO("Monitoring thread stopped");
     return NULL;
 }
 
@@ -106,20 +106,20 @@ void* worker_thread(void* arg) {
 
     cnanolog_preallocate();
 
-    log_info1("Worker %d started", thread_id);
+    LOG_INFO("Worker %d started", thread_id);
 
     /* Generate logs at varying rates */
     for (int burst = 0; burst < 10; burst++) {
         /* Log burst */
         for (int i = 0; i < 5000; i++) {
-            log_info3("Worker %d: burst %d, iteration %d", thread_id, burst, i);
+            LOG_INFO("Worker %d: burst %d, iteration %d", thread_id, burst, i);
         }
 
         /* Vary the logging rate */
         usleep(100000 * (burst % 3));  // 0-200ms pause
     }
 
-    log_info1("Worker %d completed", thread_id);
+    LOG_INFO("Worker %d completed", thread_id);
     return NULL;
 }
 
@@ -139,7 +139,7 @@ int main(void) {
 
     cnanolog_preallocate();
 
-    log_info("Application started - statistics monitoring demo");
+    LOG_INFO("Application started - statistics monitoring demo");
 
     /* Start monitoring thread */
     cnanolog_thread_t monitor_tid;

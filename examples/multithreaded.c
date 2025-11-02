@@ -30,29 +30,29 @@ void* worker_thread(void* arg) {
      */
     cnanolog_preallocate();
 
-    log_info1("Worker thread %d started", args->thread_id);
+    LOG_INFO("Worker thread %d started", args->thread_id);
 
     /* Simulate work with logging */
     for (int i = 0; i < args->num_logs; i++) {
         // Log at different levels
         if (i % 100 == 0) {
-            log_info3("Worker %d: Progress %d/%d",
+            LOG_INFO("Worker %d: Progress %d/%d",
                      args->thread_id, i, args->num_logs);
         }
 
         if (i % 500 == 0) {
-            log_debug2("Worker %d: Debug checkpoint at iteration %d",
+            LOG_DEBUG("Worker %d: Debug checkpoint at iteration %d",
                       args->thread_id, i);
         }
 
         // Simulate occasional warnings/errors
         if (i == args->num_logs / 2) {
-            log_warn1("Worker %d: Halfway through processing",
+            LOG_WARN("Worker %d: Halfway through processing",
                      args->thread_id);
         }
     }
 
-    log_info2("Worker thread %d completed (%d logs written)",
+    LOG_INFO("Worker thread %d completed (%d logs written)",
              args->thread_id, args->num_logs);
 
     return NULL;
@@ -74,7 +74,7 @@ int main(void) {
     /* Preallocate for main thread */
     cnanolog_preallocate();
 
-    log_info("Application started - multi-threaded logging test");
+    LOG_INFO("Application started - multi-threaded logging test");
 
     /* Create worker threads */
     cnanolog_thread_t threads[NUM_WORKER_THREADS];
@@ -89,14 +89,14 @@ int main(void) {
             return 1;
         }
 
-        log_info1("Created worker thread %d", i);
+        LOG_INFO("Created worker thread %d", i);
     }
 
     printf("All threads created\n");
 
     /* Main thread can also log while workers are running */
     for (int i = 0; i < 100; i++) {
-        log_info1("Main thread: monitoring iteration %d", i);
+        LOG_INFO("Main thread: monitoring iteration %d", i);
         usleep(10000);  // 10ms sleep
     }
 
@@ -108,7 +108,7 @@ int main(void) {
         printf("  Thread %d joined\n", i);
     }
 
-    log_info("All worker threads completed");
+    LOG_INFO("All worker threads completed");
 
     /* Give background thread time to process remaining logs */
     printf("\nWaiting for background thread to flush...\n");

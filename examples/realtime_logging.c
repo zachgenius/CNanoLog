@@ -31,7 +31,7 @@ void warm_staging_buffer(void) {
 
     printf("  Warming staging buffer (forcing page faults)...\n");
     for (int i = 0; i < 200000; i++) {
-        log_info1("Warmup log %d", i);
+        LOG_INFO("Warmup log %d", i);
     }
 
     /* Wait for background writer to process */
@@ -112,7 +112,7 @@ int main(void) {
 
     printf("Logging 100,000 entries...\n");
     for (int i = 0; i < 100000; i++) {
-        log_info2("Real-time log %d: value=%d", i, i * 2);
+        LOG_INFO("Real-time log %d: value=%d", i, i * 2);
     }
 
     /* Wait for processing */

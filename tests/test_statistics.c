@@ -22,17 +22,17 @@ int main(void) {
     printf("Writing test log entries...\n");
 
     /* Write various log entries */
-    log_info("Test message 1");
-    log_info1("Test with integer: %d", 42);
-    log_info2("Test with two integers: %d %d", 10, 20);
-    log_info1("Test with string: %s", "Hello");
-    log_warn("Warning message");
-    log_error1("Error message with code: %d", 500);
-    log_debug2("Debug message: x=%d, y=%d", 100, 200);
+    LOG_INFO("Test message 1");
+    LOG_INFO("Test with integer: %d", 42);
+    LOG_INFO("Test with two integers: %d %d", 10, 20);
+    LOG_INFO("Test with string: %s", "Hello");
+    LOG_WARN("Warning message");
+    LOG_ERROR("Error message with code: %d", 500);
+    LOG_DEBUG("Debug message: x=%d, y=%d", 100, 200);
 
     /* Write more entries to see compression ratio */
     for (int i = 0; i < 100; i++) {
-        log_info1("Loop iteration %d", i);
+        LOG_INFO("Loop iteration %d", i);
     }
 
     /* Give background thread time to process */

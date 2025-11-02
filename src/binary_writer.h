@@ -130,6 +130,35 @@ int binwriter_close(binary_writer_t* writer,
                     const log_site_t* sites,
                     uint32_t num_sites);
 
+/**
+ * Rotate the log file (for date-based rotation).
+ * Closes the current file and opens a new one.
+ *
+ * @param writer Binary writer handle
+ * @param new_path Path to the new log file
+ * @param sites Array of log site information (for dictionary)
+ * @param num_sites Number of log sites
+ * @param timestamp_frequency CPU ticks per second
+ * @param start_timestamp rdtsc() value when logging started
+ * @param start_time_sec Unix epoch seconds
+ * @param start_time_nsec Nanoseconds component
+ * @return 0 on success, -1 on failure
+ *
+ * Note: This function:
+ * 1. Flushes and closes the current file with dictionary
+ * 2. Opens a new file at new_path
+ * 3. Writes a new file header
+ * 4. Resets entry count for the new file
+ */
+int binwriter_rotate(binary_writer_t* writer,
+                     const char* new_path,
+                     const log_site_t* sites,
+                     uint32_t num_sites,
+                     uint64_t timestamp_frequency,
+                     uint64_t start_timestamp,
+                     time_t start_time_sec,
+                     int32_t start_time_nsec);
+
 /* ============================================================================
  * Statistics
  * ============================================================================ */

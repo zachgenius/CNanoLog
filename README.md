@@ -64,6 +64,7 @@ CNanoLog is a high-performance logging library inspired by [NanoLog](https://git
 - **Tested with 40+ concurrent threads** under stress
 
 ### Production Ready
+- **Automatic log rotation** by date with seamless file transitions
 - **Real-time statistics API** for monitoring (<5% overhead)
 - **CPU affinity control** to pin background thread to specific core (3x+ performance boost)
 - **Graceful overflow handling** with configurable drop policy
@@ -118,15 +119,31 @@ int main(void) {
 ### Decompressing Binary Logs
 
 ```bash
-# Decompress binary log to human-readable text
+# Decompress binary log to human-readable text (default format)
 ./decompressor app.clog > app.log
+
+# Custom output format
+./decompressor -f "%t | %l | %m" app.clog
+
+# CSV format for analysis
+./decompressor -f "%t,%l,%f,%L,%m" app.clog app.csv
 
 # View specific log level
 ./decompressor app.clog | grep ERROR
 
-# Follow logs in real-time
-tail -f app.clog | ./decompressor -
+# Show help and format options
+./decompressor --help
 ```
+
+**Format Tokens:**
+- `%t` - Human-readable timestamp (YYYY-MM-DD HH:MM:SS.nnnnnnnnn)
+- `%T` - Raw timestamp (CPU ticks)
+- `%r` - Relative time since start (seconds)
+- `%l` - Log level (INFO, WARN, ERROR, DEBUG)
+- `%f` - Source filename
+- `%L` - Line number
+- `%m` - Formatted log message
+- `%%` - Literal % character
 
 ### Multi-Threaded Usage
 
@@ -163,6 +180,44 @@ int main(void) {
     return 0;
 }
 ```
+
+### Automatic Log Rotation
+
+```c
+#include <cnanolog.h>
+
+int main(void) {
+    // Configure daily log rotation
+    cnanolog_rotation_config_t config = {
+        .policy = CNANOLOG_ROTATE_DAILY,
+        .base_path = "logs/app.clog"
+    };
+
+    // Initialize with rotation
+    if (cnanolog_init_ex(&config) != 0) {
+        fprintf(stderr, "Failed to initialize logger\n");
+        return 1;
+    }
+
+    // Log messages as usual - rotation happens automatically
+    log_info("Application started with daily rotation");
+
+    // Files are created with dates:
+    // logs/app-2025-11-02.clog
+    // logs/app-2025-11-03.clog (after midnight)
+    // logs/app-2025-11-04.clog (after next midnight)
+
+    cnanolog_shutdown();
+    return 0;
+}
+```
+
+**Features:**
+- ✅ **Automatic rotation** at midnight (local time)
+- ✅ **Dated filenames** (e.g., app-2025-11-02.clog)
+- ✅ **Seamless transitions** - no message loss
+- ✅ **Complete files** - each file has its own dictionary
+- ✅ **Zero overhead** - rotation happens in background thread
 
 ### Production Monitoring
 
@@ -416,8 +471,26 @@ CNanoLog uses a compact binary format to minimize logging overhead:
 
 ### Initialization
 ```c
+// Basic initialization (no rotation)
 int cnanolog_init(const char* log_file);
+
+// Advanced initialization with rotation
+typedef enum {
+    CNANOLOG_ROTATE_NONE = 0,    // No rotation (default)
+    CNANOLOG_ROTATE_DAILY,        // Rotate at midnight
+} cnanolog_rotation_policy_t;
+
+typedef struct {
+    cnanolog_rotation_policy_t policy;  // Rotation policy
+    const char* base_path;              // Base path (e.g., "logs/app.clog")
+} cnanolog_rotation_config_t;
+
+int cnanolog_init_ex(const cnanolog_rotation_config_t* config);
+
+// Shutdown and cleanup
 void cnanolog_shutdown(void);
+
+// Thread optimization
 void cnanolog_preallocate(void);  // Call at thread start
 ```
 
@@ -672,14 +745,21 @@ log_warn(...)   // Warnings
 log_error(...)  // Errors and critical events
 ```
 
-### 5. Binary Log Rotation
+### 5. Use Automatic Log Rotation
 ```c
-// Rotate logs based on size or time
-if (stats.total_bytes_written > 1GB) {
-    cnanolog_shutdown();
-    rename("app.clog", "app.clog.1");
-    cnanolog_init("app.clog");
-}
+// Recommended: Use automatic daily rotation
+cnanolog_rotation_config_t config = {
+    .policy = CNANOLOG_ROTATE_DAILY,
+    .base_path = "logs/app.clog"
+};
+cnanolog_init_ex(&config);
+
+// Files automatically rotate at midnight:
+// logs/app-2025-11-02.clog
+// logs/app-2025-11-03.clog
+// etc.
+
+// Each file is complete and can be decompressed independently
 ```
 
 ## Limitations
@@ -687,8 +767,9 @@ if (stats.total_bytes_written > 1GB) {
 - **Maximum 16 arguments** per log call (configurable via CNANOLOG_MAX_ARGS)
 - **Binary format** requires decompressor tool (not human-readable)
 - **Drop policy** - logs dropped when buffer full (alternative: blocking mode not yet implemented)
-- **Single output file** - multiple outputs not yet supported
+- **Single output file** - multiple outputs not yet supported (network, syslog, etc.)
 - **Format string constraints** - must be compile-time string literals
+- **Date-based rotation only** - size-based rotation not yet implemented
 
 ## Roadmap
 
@@ -700,15 +781,17 @@ if (stats.total_bytes_written > 1GB) {
 - [x] Phase 5: High-resolution timestamps
 - [x] Phase 6: Optimization & polishing
 - [x] Phase 7: Testing & validation
-- [x] Phase 8: Add cpu affinity support
+- [x] Phase 8: CPU affinity support for 3x+ performance boost
 - [x] Single-header version for easy integration
-- [X] Benchmarking suite for performance regression (ref: [benchmark](https://github.com/zachgenius/cnanolog_benchmark))
-- [X] Switching extreme mode (by removing timestamps) for max throughput configured at compile-time
+- [x] Benchmarking suite for performance regression (ref: [benchmark](https://github.com/zachgenius/cnanolog_benchmark))
+- [x] Extreme performance mode (no timestamps) for maximum throughput
+- [x] Decompressor with custom output formats (CSV, JSON, etc.)
+- [x] Automatic log rotation by date
 
 ### Future Enhancements
 - [ ] Burst scenario optimizations (Latency spikes)
-- [ ] Plan text logging mode (human-readable without decompressor)
-- [ ] Log rotation (size/time-based)
+- [ ] Plain text logging mode (human-readable without decompressor)
+- [ ] Size-based log rotation (in addition to date-based)
 - [ ] Multiple log outputs (file + network)
 - [ ] Log filtering by level or category
 - [ ] Blocking mode (alternative to drop policy)

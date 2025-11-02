@@ -495,6 +495,153 @@ cleanup_error:
     return -1;
 }
 
+int binwriter_rotate(binary_writer_t* writer,
+                     const char* new_path,
+                     const log_site_t* sites,
+                     uint32_t num_sites,
+                     uint64_t timestamp_frequency,
+                     uint64_t start_timestamp,
+                     time_t start_time_sec,
+                     int32_t start_time_nsec) {
+    if (writer == NULL || new_path == NULL) {
+        return -1;
+    }
+
+    /* Step 1: Flush and close current file with dictionary */
+    if (binwriter_flush(writer) != 0) {
+        fprintf(stderr, "binwriter_rotate: flush failed\n");
+        return -1;
+    }
+
+    if (wait_for_aio(writer) != 0) {
+        fprintf(stderr, "binwriter_rotate: wait for AIO failed\n");
+        return -1;
+    }
+
+    /* Write dictionary to current file */
+    uint64_t dict_offset = writer->bytes_written;
+
+    cnanolog_dict_header_t dict_header;
+    dict_header.magic = CNANOLOG_DICT_MAGIC;
+    dict_header.num_entries = num_sites;
+    dict_header.total_size = sizeof(dict_header);
+    dict_header.reserved = 0;
+
+    for (uint32_t i = 0; i < num_sites; i++) {
+        dict_header.total_size += sizeof(cnanolog_dict_entry_t);
+        dict_header.total_size += (uint32_t)strlen(sites[i].filename);
+        dict_header.total_size += (uint32_t)strlen(sites[i].format);
+    }
+
+    if (buffer_write(writer, &dict_header, sizeof(dict_header)) != 0) {
+        fprintf(stderr, "binwriter_rotate: write dict header failed\n");
+        return -1;
+    }
+
+    for (uint32_t i = 0; i < num_sites; i++) {
+        if (write_dict_entry(writer, &sites[i]) != 0) {
+            fprintf(stderr, "binwriter_rotate: write dict entry failed\n");
+            return -1;
+        }
+    }
+
+    if (binwriter_flush(writer) != 0) {
+        fprintf(stderr, "binwriter_rotate: flush dict failed\n");
+        return -1;
+    }
+
+    if (wait_for_aio(writer) != 0) {
+        fprintf(stderr, "binwriter_rotate: wait for dict AIO failed\n");
+        return -1;
+    }
+
+    /* Update header with entry count and dictionary offset */
+    if (fseek(writer->fp, 0, SEEK_SET) != 0) {
+        fprintf(stderr, "binwriter_rotate: fseek to header failed\n");
+        return -1;
+    }
+
+    cnanolog_file_header_t header;
+    if (fread(&header, 1, sizeof(header), writer->fp) != sizeof(header)) {
+        fprintf(stderr, "binwriter_rotate: read header failed\n");
+        return -1;
+    }
+
+    header.dictionary_offset = dict_offset;
+    header.entry_count = writer->entries_written;
+
+    if (fseek(writer->fp, 0, SEEK_SET) != 0) {
+        fprintf(stderr, "binwriter_rotate: fseek to start failed\n");
+        return -1;
+    }
+
+    if (fwrite(&header, 1, sizeof(header), writer->fp) != sizeof(header)) {
+        fprintf(stderr, "binwriter_rotate: write header failed\n");
+        return -1;
+    }
+
+    fflush(writer->fp);
+#ifndef _WIN32
+    fsync(writer->fd);
+    close(writer->fd);
+#endif
+    fclose(writer->fp);
+
+    /* Step 2: Open new file */
+#ifndef _WIN32
+    writer->fd = open(new_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (writer->fd == -1) {
+        fprintf(stderr, "binwriter_rotate: open new file failed: %s\n", strerror(errno));
+        return -1;
+    }
+#endif
+
+    writer->fp = fopen(new_path, "r+b");
+    if (writer->fp == NULL) {
+        fprintf(stderr, "binwriter_rotate: fopen new file failed: %s\n", strerror(errno));
+#ifndef _WIN32
+        close(writer->fd);
+#endif
+        return -1;
+    }
+
+    /* Reset writer state for new file */
+    writer->buffer_used = 0;
+    writer->active_buffer_idx = 0;
+    writer->has_outstanding_aio = 0;
+    writer->entries_written = 0;
+    writer->bytes_written = 0;
+
+    /* Step 3: Write new file header */
+    cnanolog_file_header_t new_header;
+    memset(&new_header, 0, sizeof(new_header));
+
+    new_header.magic = CNANOLOG_MAGIC;
+    new_header.version_major = CNANOLOG_VERSION_MAJOR;
+    new_header.version_minor = CNANOLOG_VERSION_MINOR;
+    new_header.timestamp_frequency = timestamp_frequency;
+    new_header.start_timestamp = start_timestamp;
+    new_header.start_time_sec = start_time_sec;
+    new_header.start_time_nsec = start_time_nsec;
+    new_header.endianness = CNANOLOG_ENDIAN_MAGIC;
+    new_header.dictionary_offset = 0;
+    new_header.entry_count = 0;
+
+    new_header.flags = 0;
+#ifndef CNANOLOG_NO_TIMESTAMPS
+    new_header.flags |= CNANOLOG_FLAG_HAS_TIMESTAMPS;
+#endif
+
+    ssize_t written = write(writer->fd, &new_header, sizeof(new_header));
+    if (written != sizeof(new_header)) {
+        fprintf(stderr, "binwriter_rotate: write new header failed\n");
+        return -1;
+    }
+
+    writer->bytes_written += written;
+    return 0;
+}
+
 /* ============================================================================
  * Statistics Functions
  * ============================================================================ */

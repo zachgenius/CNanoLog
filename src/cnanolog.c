@@ -49,6 +49,11 @@ static int32_t g_start_time_nsec = 0;
 static uint64_t g_timestamp_frequency = 0;  /* CPU frequency (Hz) for rdtsc() */
 #endif
 
+/* Rotation state */
+static cnanolog_rotation_policy_t g_rotation_policy = CNANOLOG_ROTATE_NONE;
+static char g_base_path[512] = {0};  /* Base path for rotated files */
+static int g_current_day = -1;       /* Current day of year (for rotation check) */
+
 /* ============================================================================
  * Global Statistics Tracking
  * ============================================================================ */
@@ -108,6 +113,8 @@ static uint64_t get_timestamp(void);
 static void buffer_registry_init(buffer_registry_t* registry);
 static int buffer_registry_add(buffer_registry_t* registry, staging_buffer_t* buffer);
 static staging_buffer_t* get_or_create_staging_buffer(void);
+static void generate_dated_filename(const char* base_path, char* output, size_t output_size);
+static int check_and_rotate_if_needed(void);
 
 /* ============================================================================
  * Timestamp Calibration (Phase 5)
@@ -148,6 +155,88 @@ static void calibrate_timestamp(void) {
 #endif
 
 /* ============================================================================
+ * Rotation Helpers
+ * ============================================================================ */
+
+/**
+ * Generate a dated filename from a base path.
+ * Example: "logs/app.clog" -> "logs/app-2025-11-02.clog"
+ */
+static void generate_dated_filename(const char* base_path, char* output, size_t output_size) {
+    /* Get current date */
+    time_t now = time(NULL);
+    struct tm* tm = localtime(&now);
+
+    /* Find the extension */
+    const char* ext = strrchr(base_path, '.');
+    if (ext == NULL) {
+        /* No extension, append date at end */
+        snprintf(output, output_size, "%s-%04d-%02d-%02d",
+                base_path,
+                tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+    } else {
+        /* Insert date before extension */
+        size_t base_len = ext - base_path;
+        snprintf(output, output_size, "%.*s-%04d-%02d-%02d%s",
+                (int)base_len, base_path,
+                tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+                ext);
+    }
+}
+
+/**
+ * Check if date has changed and rotate log file if needed.
+ * Returns 0 on success, -1 on error.
+ */
+static int check_and_rotate_if_needed(void) {
+    if (g_rotation_policy != CNANOLOG_ROTATE_DAILY) {
+        return 0;  /* Rotation not enabled */
+    }
+
+    /* Get current day */
+    time_t now = time(NULL);
+    struct tm* tm = localtime(&now);
+    int day_of_year = tm->tm_yday;
+
+    /* Initialize current day on first check */
+    if (g_current_day == -1) {
+        g_current_day = day_of_year;
+        return 0;
+    }
+
+    /* Check if day has changed */
+    if (day_of_year != g_current_day) {
+        g_current_day = day_of_year;
+
+        /* Generate new filename */
+        char new_path[512];
+        generate_dated_filename(g_base_path, new_path, sizeof(new_path));
+
+        /* Get log sites for dictionary */
+        uint32_t num_sites = 0;
+        const log_site_t* sites = log_registry_get_all(&g_registry, &num_sites);
+
+        /* Rotate the log file */
+        fprintf(stderr, "cnanolog: Rotating log file to: %s\n", new_path);
+        if (binwriter_rotate(g_binary_writer, new_path, sites, num_sites,
+#ifndef CNANOLOG_NO_TIMESTAMPS
+                           g_timestamp_frequency,
+                           g_start_timestamp,
+                           g_start_time_sec,
+                           g_start_time_nsec
+#else
+                           0, 0, now, 0
+#endif
+                          ) != 0) {
+            fprintf(stderr, "cnanolog: Failed to rotate log file\n");
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+/* ============================================================================
  * Initialization
  * ============================================================================ */
 
@@ -155,6 +244,9 @@ int cnanolog_init(const char* log_file_path) {
     if (g_is_initialized) {
         return 0;  /* Already initialized */
     }
+
+    /* Initialize with no rotation */
+    g_rotation_policy = CNANOLOG_ROTATE_NONE;
 
     /* Initialize registry */
     log_registry_init(&g_registry);
@@ -199,6 +291,92 @@ int cnanolog_init(const char* log_file_path) {
     /* Start background writer thread */
     if (cnanolog_thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
         fprintf(stderr, "cnanolog_init: Failed to create writer thread\n");
+        binwriter_close(g_binary_writer, NULL, 0);
+        log_registry_destroy(&g_registry);
+        return -1;
+    }
+
+    g_is_initialized = 1;
+    return 0;
+}
+
+int cnanolog_init_ex(const cnanolog_rotation_config_t* config) {
+    if (config == NULL) {
+        fprintf(stderr, "cnanolog_init_ex: config is NULL\n");
+        return -1;
+    }
+
+    if (g_is_initialized) {
+        return 0;  /* Already initialized */
+    }
+
+    /* Store rotation configuration */
+    g_rotation_policy = config->policy;
+    if (config->base_path != NULL) {
+        strncpy(g_base_path, config->base_path, sizeof(g_base_path) - 1);
+        g_base_path[sizeof(g_base_path) - 1] = '\0';
+    }
+
+    /* Generate dated filename if rotation is enabled */
+    char log_file_path[512];
+    if (g_rotation_policy == CNANOLOG_ROTATE_DAILY) {
+        generate_dated_filename(g_base_path, log_file_path, sizeof(log_file_path));
+        fprintf(stderr, "cnanolog: Starting with log file: %s\n", log_file_path);
+    } else {
+        strncpy(log_file_path, g_base_path, sizeof(log_file_path) - 1);
+        log_file_path[sizeof(log_file_path) - 1] = '\0';
+    }
+
+    /* Initialize registry */
+    log_registry_init(&g_registry);
+
+    /* Create binary writer */
+    g_binary_writer = binwriter_create(log_file_path);
+    if (g_binary_writer == NULL) {
+        fprintf(stderr, "cnanolog_init_ex: Failed to create binary writer\n");
+        log_registry_destroy(&g_registry);
+        return -1;
+    }
+
+    /* Calibrate timestamp (Phase 5: Measure CPU frequency) */
+#ifndef CNANOLOG_NO_TIMESTAMPS
+    calibrate_timestamp();
+
+    /* Write file header with calibrated frequency */
+    if (binwriter_write_header(g_binary_writer,
+                               g_timestamp_frequency,  /* Calibrated CPU frequency */
+                               g_start_timestamp,
+                               g_start_time_sec,
+                               g_start_time_nsec) != 0) {
+#else
+    /* No timestamps - write header with zeros for timestamp fields */
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    if (binwriter_write_header(g_binary_writer,
+                               0,  /* No timestamp frequency */
+                               0,  /* No start timestamp */
+                               ts.tv_sec,
+                               (int32_t)ts.tv_nsec) != 0) {
+#endif
+        fprintf(stderr, "cnanolog_init_ex: Failed to write header\n");
+        binwriter_close(g_binary_writer, NULL, 0);
+        log_registry_destroy(&g_registry);
+        return -1;
+    }
+
+    /* Initialize buffer registry */
+    buffer_registry_init(&g_buffer_registry);
+
+    /* Initialize current day for rotation */
+    if (g_rotation_policy == CNANOLOG_ROTATE_DAILY) {
+        time_t now = time(NULL);
+        struct tm* tm = localtime(&now);
+        g_current_day = tm->tm_yday;
+    }
+
+    /* Start background writer thread */
+    if (cnanolog_thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
+        fprintf(stderr, "cnanolog_init_ex: Failed to create writer thread\n");
         binwriter_close(g_binary_writer, NULL, 0);
         log_registry_destroy(&g_registry);
         return -1;
@@ -530,6 +708,11 @@ static void* writer_thread_main(void* arg) {
 #ifndef CNANOLOG_NO_TIMESTAMPS
             last_flush_time = now;
 #endif
+        }
+
+        /* Check if rotation is needed (once per loop iteration) */
+        if (g_rotation_policy != CNANOLOG_ROTATE_NONE) {
+            check_and_rotate_if_needed();
         }
 
         if (!found_work) {

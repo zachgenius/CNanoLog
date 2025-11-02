@@ -12,6 +12,23 @@ extern "C" {
  * ============================================================================ */
 
 /**
+ * Log rotation policy for date-based rotation.
+ */
+typedef enum {
+    CNANOLOG_ROTATE_NONE = 0,    /* No rotation (default) */
+    CNANOLOG_ROTATE_DAILY,        /* Rotate when date changes */
+} cnanolog_rotation_policy_t;
+
+/**
+ * Configuration for log rotation.
+ */
+typedef struct {
+    cnanolog_rotation_policy_t policy;  /* Rotation policy */
+    const char* base_path;               /* Base path for log files (e.g., "app.clog") */
+                                         /* Dated files: "app-2025-11-02.clog" */
+} cnanolog_rotation_config_t;
+
+/**
  * Initialize the logging system with binary format.
  * Must be called once at application startup.
  *
@@ -19,6 +36,24 @@ extern "C" {
  * @return 0 on success, -1 on failure
  */
 int cnanolog_init(const char* log_file_path);
+
+/**
+ * Initialize the logging system with rotation support.
+ * When rotation is enabled, log files are named with dates:
+ * - base_path "logs/app.clog" becomes "logs/app-2025-11-02.clog"
+ * - Files rotate automatically at midnight (local time)
+ *
+ * @param config Rotation configuration
+ * @return 0 on success, -1 on failure
+ *
+ * Example (daily rotation):
+ *   cnanolog_rotation_config_t config = {
+ *       .policy = CNANOLOG_ROTATE_DAILY,
+ *       .base_path = "logs/app.clog"
+ *   };
+ *   cnanolog_init_ex(&config);
+ */
+int cnanolog_init_ex(const cnanolog_rotation_config_t* config);
 
 /**
  * Shut down the logger, flush all messages, and write dictionary.

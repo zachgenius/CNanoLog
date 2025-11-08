@@ -6,21 +6,6 @@ Ultra-fast, low-latency logging library for C with nanosecond-scale overhead.
 [![C11](https://img.shields.io/badge/std-C11-blue.svg)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com)
 
-## Overview
-
-CNanoLog achieves **54ns median, 108ns p99.9 latency** on production hardware by moving expensive formatting work to a background thread. Producers only pack raw arguments into thread-local buffers using lock-free operations.
-
-**Performance vs. Popular Logging Libraries:**
-
-| Library | p50 Latency | p99.9 Latency | Result |
-|---------|-------------|---------------|--------|
-| CNanoLog | 54ns | 108ns | Fastest |
-| NanoLog (C++) | 108ns | 702ns | 6.5x slower |
-| fmtlog (C++) | 108ns | 702ns | 6.5x slower |
-| spdlog | 1134ns | 22788ns | 211x slower |
-
-See [PERFORMANCE.md](docs/PERFORMANCE.md) for comprehensive benchmarks.
-
 ## Key Features
 
 - **Low latency**: 54ns median logging overhead
@@ -85,7 +70,6 @@ sudo make install
 - [Usage Guide](docs/USAGE.md) - Detailed usage examples and patterns
 - [API Reference](docs/API.md) - Complete API documentation
 - [Configuration](docs/CONFIGURATION.md) - Tuning and optimization options
-- [Performance](docs/PERFORMANCE.md) - Benchmarks and comparisons
 - [Binary Format](docs/BINARY_FORMAT_SPEC.md) - Binary log format specification
 
 ## Basic Usage Examples

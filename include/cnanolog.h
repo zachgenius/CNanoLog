@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdarg.h>
+#include <stddef.h>  /* For NULL */
 
 #ifdef __cplusplus
 extern "C" {
@@ -236,7 +237,8 @@ uint32_t _cnanolog_register_site(cnanolog_level_t level,
                                   uint32_t line_number,
                                   const char* format,
                                   uint8_t num_args,
-                                  const uint8_t* arg_types);
+                                  const uint8_t* arg_types,
+                                  const char* text_pattern);
 
 /**
  * Write a binary log entry.
@@ -261,7 +263,7 @@ void _cnanolog_log_binary(uint32_t log_id,
         static const uint8_t __cnanolog_empty_types[] = {0}; \
         if (__cnanolog_cached_id == UINT32_MAX) { \
             __cnanolog_cached_id = _cnanolog_register_site( \
-                level, __FILE__, __LINE__, format, 0, __cnanolog_empty_types); \
+                level, __FILE__, __LINE__, format, 0, __cnanolog_empty_types, NULL); \
         } \
         _cnanolog_log_binary(__cnanolog_cached_id, 0, __cnanolog_empty_types); \
     } while(0)
@@ -276,7 +278,25 @@ void _cnanolog_log_binary(uint32_t log_id,
             __cnanolog_cached_id = _cnanolog_register_site( \
                 level, __FILE__, __LINE__, format, \
                 __cnanolog_num_args, \
-                __cnanolog_arg_types); \
+                __cnanolog_arg_types, NULL); \
+        } \
+        _cnanolog_log_binary(__cnanolog_cached_id, \
+                            __cnanolog_num_args, \
+                            __cnanolog_arg_types, \
+                            ##__VA_ARGS__); \
+    } while(0)
+
+/* Base macro for logs WITH arguments AND custom text pattern */
+#define CNANOLOG_LOG_ARGS_FMT(level, text_pattern, format, ...) \
+    do { \
+        static uint32_t __cnanolog_cached_id = UINT32_MAX; \
+        static uint8_t __cnanolog_arg_types[] = CNANOLOG_ARG_TYPES(__VA_ARGS__); \
+        static const uint8_t __cnanolog_num_args = CNANOLOG_COUNT_ARGS(__VA_ARGS__); \
+        if (__cnanolog_cached_id == UINT32_MAX) { \
+            __cnanolog_cached_id = _cnanolog_register_site( \
+                level, __FILE__, __LINE__, format, \
+                __cnanolog_num_args, \
+                __cnanolog_arg_types, text_pattern); \
         } \
         _cnanolog_log_binary(__cnanolog_cached_id, \
                             __cnanolog_num_args, \
@@ -315,6 +335,40 @@ void _cnanolog_log_binary(uint32_t log_id,
  */
 #define CNANOLOG_LOG(level, format, ...) \
     CNANOLOG_LOG_ARGS(level, format, ##__VA_ARGS__)
+
+/* ============================================================================
+ * Logging Macros with Custom Text Patterns
+ *
+ * These macros allow you to override the global text pattern for specific logs.
+ * Only applies when using text output mode (CNANOLOG_OUTPUT_TEXT).
+ * In binary mode, the pattern parameter is stored but not used.
+ *
+ * Usage:
+ *   // Use global pattern (set in cnanolog_init_ex)
+ *   LOG_INFO("Server started on port %d", 8080);
+ *
+ *   // Override pattern for this specific log
+ *   LOG_INFO_FMT("%T %m", "Server started on port %d", 8080);
+ *   // Output: 14:30:15.123 Server started on port 8080
+ *
+ *   // JSON format for specific log
+ *   LOG_WARN_FMT("{\"time\":\"%t\",\"level\":\"%l\",\"msg\":\"%m\"}",
+ *                "Memory usage: %d%%", usage);
+ *
+ * Pattern tokens: %t, %T, %d, %D, %l, %L, %f, %F, %n, %m, %%
+ * (See CNANOLOG_DEFAULT_PATTERN documentation above for full list)
+ * ============================================================================ */
+#define LOG_INFO_FMT(text_pattern, format, ...) \
+    CNANOLOG_LOG_ARGS_FMT(LOG_LEVEL_INFO, text_pattern, format, ##__VA_ARGS__)
+
+#define LOG_WARN_FMT(text_pattern, format, ...) \
+    CNANOLOG_LOG_ARGS_FMT(LOG_LEVEL_WARN, text_pattern, format, ##__VA_ARGS__)
+
+#define LOG_ERROR_FMT(text_pattern, format, ...) \
+    CNANOLOG_LOG_ARGS_FMT(LOG_LEVEL_ERROR, text_pattern, format, ##__VA_ARGS__)
+
+#define LOG_DEBUG_FMT(text_pattern, format, ...) \
+    CNANOLOG_LOG_ARGS_FMT(LOG_LEVEL_DEBUG, text_pattern, format, ##__VA_ARGS__)
 
 /* ============================================================================
  * Statistics and Monitoring

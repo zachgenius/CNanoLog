@@ -415,9 +415,11 @@ int text_writer_write_entry(text_writer_t* writer,
     /* Get level string */
     const char* level_str = level_to_string(site->log_level);
 
-    /* Format complete log line using pattern */
+    /* Format complete log line using pattern
+     * Priority: 1) Per-log pattern, 2) Global pattern, 3) Default pattern */
     char output_buf[MESSAGE_BUFFER_SIZE + 256];  /* Extra space for timestamp, etc. */
-    const char* pattern = writer->pattern ? writer->pattern : "[%t] [%l] [%f:%n] %m";
+    const char* pattern = site->text_pattern ? site->text_pattern :
+                          (writer->pattern ? writer->pattern : "[%t] [%l] [%f:%n] %m");
 
     format_entry_with_pattern(pattern, timestamp_buf, level_str, site,
                               message_buf, output_buf, sizeof(output_buf));

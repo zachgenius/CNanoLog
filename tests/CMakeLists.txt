@@ -22,6 +22,7 @@ set(TESTS
     benchmark_comprehensive
     test_burst_scenario
     debug_count
+    test_per_log_pattern
 )
 
 # Build each test

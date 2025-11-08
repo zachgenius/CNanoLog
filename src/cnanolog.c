@@ -633,13 +633,14 @@ uint32_t _cnanolog_register_site(cnanolog_level_t level,
                                   uint32_t line_number,
                                   const char* format,
                                   uint8_t num_args,
-                                  const uint8_t* arg_types) {
+                                  const uint8_t* arg_types,
+                                  const char* text_pattern) {
     if (!g_is_initialized) {
         return UINT32_MAX;
     }
 
     return log_registry_register(&g_registry, level, filename, line_number,
-                                format, num_args, arg_types);
+                                format, num_args, arg_types, text_pattern);
 }
 
 /* ============================================================================

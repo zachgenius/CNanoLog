@@ -28,7 +28,7 @@ void test_registry_register() {
     uint32_t id = log_registry_register(&registry, LOG_LEVEL_INFO,
                                          "test.c", 10,
                                          "Count: %d, Name: %s",
-                                         2, arg_types);
+                                         2, arg_types, NULL);
 
     assert(id == 0);  /* First registration should get ID 0 */
     assert(log_registry_count(&registry) == 1);
@@ -58,11 +58,11 @@ void test_registry_duplicate() {
     /* Register same site twice */
     uint32_t id1 = log_registry_register(&registry, LOG_LEVEL_INFO,
                                           "test.c", 10,
-                                          "Message: %d", 1, arg_types);
+                                          "Message: %d", 1, arg_types, NULL);
 
     uint32_t id2 = log_registry_register(&registry, LOG_LEVEL_INFO,
                                           "test.c", 10,
-                                          "Message: %d", 1, arg_types);
+                                          "Message: %d", 1, arg_types, NULL);
 
     assert(id1 == id2);  /* Should return same ID */
     assert(log_registry_count(&registry) == 1);  /* Only one entry */
@@ -70,7 +70,7 @@ void test_registry_duplicate() {
     /* Register different site (different line) */
     uint32_t id3 = log_registry_register(&registry, LOG_LEVEL_INFO,
                                           "test.c", 20,
-                                          "Message: %d", 1, arg_types);
+                                          "Message: %d", 1, arg_types, NULL);
 
     assert(id3 != id1);  /* Should get different ID */
     assert(log_registry_count(&registry) == 2);
@@ -88,9 +88,9 @@ void test_registry_multiple() {
     uint8_t types2[] = {ARG_TYPE_STRING};
     uint8_t types3[] = {ARG_TYPE_INT32, ARG_TYPE_DOUBLE};
 
-    uint32_t id1 = log_registry_register(&registry, LOG_LEVEL_INFO, "a.c", 10, "Msg1: %d", 1, types1);
-    uint32_t id2 = log_registry_register(&registry, LOG_LEVEL_WARN, "b.c", 20, "Msg2: %s", 1, types2);
-    uint32_t id3 = log_registry_register(&registry, LOG_LEVEL_ERROR, "c.c", 30, "Msg3: %d %f", 2, types3);
+    uint32_t id1 = log_registry_register(&registry, LOG_LEVEL_INFO, "a.c", 10, "Msg1: %d", 1, types1, NULL);
+    uint32_t id2 = log_registry_register(&registry, LOG_LEVEL_WARN, "b.c", 20, "Msg2: %s", 1, types2, NULL);
+    uint32_t id3 = log_registry_register(&registry, LOG_LEVEL_ERROR, "c.c", 30, "Msg3: %d %f", 2, types3, NULL);
 
     assert(id1 == 0);
     assert(id2 == 1);

@@ -71,7 +71,8 @@ uint32_t log_registry_register(log_registry_t* registry,
                                 uint32_t line_number,
                                 const char* format,
                                 uint8_t num_args,
-                                const uint8_t* arg_types) {
+                                const uint8_t* arg_types,
+                                const char* text_pattern) {
     cnanolog_mutex_lock(&registry->lock);
 
     /* Check if this site already exists */
@@ -97,6 +98,7 @@ uint32_t log_registry_register(log_registry_t* registry,
     site->format = format;      /* Note: assumes string literals (static storage) */
     site->line_number = line_number;
     site->num_args = num_args;
+    site->text_pattern = text_pattern;  /* Custom pattern (NULL = use global) */
 
     /* Copy argument types (convert uint8_t -> cnanolog_arg_type_t) */
     for (uint8_t i = 0; i < num_args; i++) {

@@ -81,13 +81,13 @@ Throughput (single-threaded):
 **Scales**:
 | Scale | Logs | Approx Size | Default | Duration |
 |-------|------|-------------|---------|----------|
-| Tiny | 1,000 | ~10 KB | ✅ | <1 sec |
-| Small | 10,000 | ~100 KB | ✅ | <1 sec |
-| Medium | 100,000 | ~1 MB | ✅ | 1-2 sec |
-| Large | 1,000,000 | ~10 MB | ✅ | 5-10 sec |
-| XLarge | 10,000,000 | ~100 MB | ✅ | 1-2 min |
-| Huge | 100,000,000 | ~1 GB | ✅ | 10-20 min |
-| Extreme | 1,000,000,000 | ~10 GB | ❌ | Hours |
+| Tiny | 1,000 | ~10 KB | Yes | <1 sec |
+| Small | 10,000 | ~100 KB | Yes | <1 sec |
+| Medium | 100,000 | ~1 MB | Yes | 1-2 sec |
+| Large | 1,000,000 | ~10 MB | Yes | 5-10 sec |
+| XLarge | 10,000,000 | ~100 MB | Yes | 1-2 min |
+| Huge | 100,000,000 | ~1 GB | Yes | 10-20 min |
+| Extreme | 1,000,000,000 | ~10 GB | No | Hours |
 
 **Usage**:
 ```bash
@@ -324,57 +324,57 @@ The `run_benchmarks.sh` script provides easy access to common benchmark scenario
 
 ```
 Latency:
-  p50:  15-25ns    ✅ Excellent
-  p99:  40-80ns    ✅ Good tail latency
-  p99.9: 150-300ns ✅ Acceptable spikes
+  p50:  15-25ns    (Excellent)
+  p99:  40-80ns    (Good tail latency)
+  p99.9: 150-300ns (Acceptable spikes)
 
 Throughput:
-  Single:  40-60M logs/sec   ✅ Great
-  4-thread: 150-200M logs/sec ✅ Excellent scaling
+  Single:  40-60M logs/sec   (Great)
+  4-thread: 150-200M logs/sec (Excellent scaling)
 
-Drop rate: 0.00%  ✅ Perfect
+Drop rate: 0.00%  (Perfect)
 ```
 
 ### Poor Performance
 
 ```
 Latency:
-  p50:  >50ns      ⚠️ High median
-  p99:  >200ns     ⚠️ High tail latency
-  p99.9: >1000ns   ⚠️ Excessive spikes
+  p50:  >50ns      (High median)
+  p99:  >200ns     (High tail latency)
+  p99.9: >1000ns   (Excessive spikes)
 
 Throughput:
-  Single:  <10M logs/sec    ⚠️ Low
-  4-thread: <30M logs/sec   ⚠️ Poor scaling
+  Single:  <10M logs/sec    (Low)
+  4-thread: <30M logs/sec   (Poor scaling)
 
-Drop rate: >1%  ⚠️ Too many drops
+Drop rate: >1%  (Too many drops)
 ```
 
 ### Improvement Checklist
 
 If performance is poor:
 
-1. ✅ **Enable CPU affinity**
+1. **Enable CPU affinity**
    ```c
    cnanolog_set_writer_affinity(num_cores - 1);
    ```
 
-2. ✅ **Call preallocate in each thread**
+2. **Call preallocate in each thread**
    ```c
    cnanolog_preallocate();
    ```
 
-3. ✅ **Increase buffer size** (in `src/staging_buffer.h`)
+3. **Increase buffer size** (in `src/staging_buffer.h`)
    ```c
    #define STAGING_BUFFER_SIZE (2 * 1024 * 1024)  // 2MB
    ```
 
-4. ✅ **Compile with optimizations**
+4. **Compile with optimizations**
    ```bash
    cmake -DCMAKE_BUILD_TYPE=Release ..
    ```
 
-5. ✅ **Check CPU frequency scaling** (Linux)
+5. **Check CPU frequency scaling** (Linux)
    ```bash
    cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
    # Should be "performance", not "powersave"
@@ -397,10 +397,10 @@ If performance is poor:
 - printf: 1000-5000ns (slow)
 
 **Use CNanoLog when**:
-- ✅ Every nanosecond counts
-- ✅ Million+ logs per second needed
-- ✅ Binary format is acceptable
-- ✅ Post-processing is OK
+- Every nanosecond counts
+- Million+ logs per second needed
+- Binary format is acceptable
+- Post-processing is OK
 
 **Use alternatives when**:
 - Human-readable logs required immediately

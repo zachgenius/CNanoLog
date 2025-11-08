@@ -1,6 +1,6 @@
-# CNanoLog Optimization Guide: Achieving 8-12ns Latency
+# Advanced Optimization Guide
 
-This guide shows how to optimize CNanoLog to approach NanoLog's 7ns performance.
+Low-level optimizations to achieve 8-12ns latency approaching NanoLog's 7ns performance.
 
 ## Quick Start: Enable Fast Path Optimizations
 
@@ -342,6 +342,6 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release \
 | **Easy win** | Just use -O3 -march=native | 16-17ns |
 | **Production ready** | Current setup | 19.8ns (already excellent!) |
 
-**Bottom line:** Your current 29M logs/sec with 0% drops is production-ready. The optimizations above are only needed for extreme (>50M logs/sec) scenarios where every nanosecond counts.
+**Summary:** Current performance of 29M logs/sec with 0% drops is production-ready. The optimizations above are only needed for extreme (>50M logs/sec) scenarios where every nanosecond counts.
 
-To match NanoLog's 7ns, you'd need to disable timestamps (which defeats the purpose of logging in most cases). With timestamps, 14-17ns is achievable and competitive! 🚀
+To match NanoLog's 7ns requires disabling timestamps (which defeats the purpose of logging in most cases). With timestamps, 14-17ns is achievable and competitive.

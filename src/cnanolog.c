@@ -336,8 +336,10 @@ int cnanolog_init(const char* log_file_path) {
     g_rotation_policy = CNANOLOG_ROTATE_NONE;
     g_output_format = CNANOLOG_OUTPUT_BINARY;
 
-    /* Initialize registry */
-    log_registry_init(&g_registry);
+    /* Initialize registry (only on first init, persists across shutdown/init cycles) */
+    if (g_registry.sites == NULL) {
+        log_registry_init(&g_registry);
+    }
 
     /* Create binary writer */
     g_binary_writer = binwriter_create(log_file_path);
@@ -373,8 +375,10 @@ int cnanolog_init(const char* log_file_path) {
         return -1;
     }
 
-    /* Initialize buffer registry */
-    buffer_registry_init(&g_buffer_registry);
+    /* Initialize buffer registry (only on first init, persists across shutdown/init cycles) */
+    if (g_buffer_registry.count == 0 && g_buffer_registry.buffers[0] == NULL) {
+        buffer_registry_init(&g_buffer_registry);
+    }
 
     /* Start background writer thread */
     if (cnanolog_thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
@@ -416,8 +420,10 @@ int cnanolog_init_ex(const cnanolog_rotation_config_t* config) {
         log_file_path[sizeof(log_file_path) - 1] = '\0';
     }
 
-    /* Initialize registry */
-    log_registry_init(&g_registry);
+    /* Initialize registry (only on first init, persists across shutdown/init cycles) */
+    if (g_registry.sites == NULL) {
+        log_registry_init(&g_registry);
+    }
 
     /* Calibrate timestamp (before creating writers) */
 #ifndef CNANOLOG_NO_TIMESTAMPS
@@ -442,6 +448,9 @@ int cnanolog_init_ex(const cnanolog_rotation_config_t* config) {
                                         g_start_time_sec,
                                         g_start_time_nsec);
 #endif
+
+        /* Set custom format pattern (NULL = use default) */
+        text_writer_set_pattern(g_text_writer, config->text_pattern);
     } else {
         /* Binary mode: Create binary writer */
         g_binary_writer = binwriter_create(log_file_path);
@@ -474,8 +483,10 @@ int cnanolog_init_ex(const cnanolog_rotation_config_t* config) {
         }
     }
 
-    /* Initialize buffer registry */
-    buffer_registry_init(&g_buffer_registry);
+    /* Initialize buffer registry (only on first init, persists across shutdown/init cycles) */
+    if (g_buffer_registry.count == 0 && g_buffer_registry.buffers[0] == NULL) {
+        buffer_registry_init(&g_buffer_registry);
+    }
 
     /* Initialize current day for rotation */
     if (g_rotation_policy == CNANOLOG_ROTATE_DAILY) {
@@ -516,6 +527,11 @@ void cnanolog_shutdown(void) {
     /*
      * Final flush of all staging buffers.
      * Safe without lock: background thread has exited, no new logs can arrive.
+     *
+     * NOTE: We do NOT destroy the staging buffers here.
+     * Thread-local variables still point to these buffers, and destroying them
+     * would cause undefined behavior on re-initialization when threads try to
+     * write to freed memory. The buffers persist across init/shutdown cycles.
      */
     char temp_buf[MAX_LOG_ENTRY_SIZE];
     uint32_t num_buffers = g_buffer_registry.count;  /* Read atomic counter */
@@ -572,15 +588,15 @@ void cnanolog_shutdown(void) {
             staging_consume(sb, nread);
         }
 
-        /* Destroy the buffer */
-        staging_buffer_destroy(sb);
+        /* NOTE: Buffer persists - do NOT destroy */
     }
-    g_buffer_registry.count = 0;
+    /* NOTE: Do NOT reset count - buffer registry persists across shutdown/init cycles */
 
     /* Close writer based on output format */
     if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
         /* TEXT MODE: Just close the file */
         text_writer_close(g_text_writer);
+        g_text_writer = NULL;
     } else {
         /* BINARY MODE: Close and write dictionary */
         uint32_t num_sites = 0;
@@ -595,9 +611,16 @@ void cnanolog_shutdown(void) {
         }
     }
 
-    /* Clean up */
-    log_registry_destroy(&g_registry);
+    /*
+     * NOTE: We do NOT destroy the log registry here.
+     * Log sites are registered with cached IDs in static variables (see LOG_* macros).
+     * If we destroy the registry, those cached IDs become invalid on re-initialization.
+     * Keeping the registry alive across init/shutdown cycles allows proper re-use.
+     * The registry uses minimal memory and doesn't hurt to keep it.
+     */
 
+    /* Reset state for potential re-initialization */
+    g_should_exit = 0;
     g_is_initialized = 0;
 }
 

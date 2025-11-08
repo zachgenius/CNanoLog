@@ -36,7 +36,34 @@ typedef struct {
                                          /* Dated files: "app-2025-11-02.clog" */
     cnanolog_output_format_t format;     /* Output format (binary or text) */
                                          /* Default: CNANOLOG_OUTPUT_BINARY */
+    const char* text_pattern;            /* Text format pattern (NULL = use default) */
+                                         /* Only applies when format == CNANOLOG_OUTPUT_TEXT */
+                                         /* Default: "[%t] [%l] [%f:%n] %m" */
 } cnanolog_rotation_config_t;
+
+/**
+ * Text format pattern tokens (used when format == CNANOLOG_OUTPUT_TEXT):
+ *
+ *   %t - Full timestamp (YYYY-MM-DD HH:MM:SS.nnnnnnnnn)
+ *   %T - Short timestamp (HH:MM:SS.nnn) - microsecond precision
+ *   %d - Date only (YYYY-MM-DD)
+ *   %D - Time only (HH:MM:SS)
+ *   %l - Log level name (INFO, WARN, ERROR, DEBUG)
+ *   %L - Log level letter (I, W, E, D)
+ *   %f - Filename (basename)
+ *   %F - Full file path
+ *   %n - Line number
+ *   %m - Formatted message
+ *   %% - Literal %
+ *
+ * Examples:
+ *   "[%t] [%l] [%f:%n] %m"                      - Default (full info)
+ *   "%t [%l] %m"                                - Simple (no file info)
+ *   "%T %L %m"                                  - Compact
+ *   "{\"time\":\"%t\",\"level\":\"%l\",\"msg\":\"%m\"}" - JSON
+ *   "time=%t level=%l file=%f:%n msg=\"%m\""    - Logfmt
+ */
+#define CNANOLOG_DEFAULT_PATTERN "[%t] [%l] [%f:%n] %m"
 
 /**
  * Initialize the logging system with binary format.
@@ -68,7 +95,26 @@ int cnanolog_init(const char* log_file_path);
  *   cnanolog_rotation_config_t config = {
  *       .policy = CNANOLOG_ROTATE_NONE,
  *       .base_path = "logs/app.log",
- *       .format = CNANOLOG_OUTPUT_TEXT  // No decompressor needed
+ *       .format = CNANOLOG_OUTPUT_TEXT,  // No decompressor needed
+ *       .text_pattern = NULL             // NULL = use default pattern
+ *   };
+ *   cnanolog_init_ex(&config);
+ *
+ * Example (custom text format - compact):
+ *   cnanolog_rotation_config_t config = {
+ *       .policy = CNANOLOG_ROTATE_NONE,
+ *       .base_path = "logs/app.log",
+ *       .format = CNANOLOG_OUTPUT_TEXT,
+ *       .text_pattern = "%T [%l] %m"     // HH:MM:SS [INFO] message
+ *   };
+ *   cnanolog_init_ex(&config);
+ *
+ * Example (JSON format):
+ *   cnanolog_rotation_config_t config = {
+ *       .policy = CNANOLOG_ROTATE_NONE,
+ *       .base_path = "logs/app.log",
+ *       .format = CNANOLOG_OUTPUT_TEXT,
+ *       .text_pattern = "{\"time\":\"%t\",\"level\":\"%l\",\"msg\":\"%m\"}"
  *   };
  *   cnanolog_init_ex(&config);
  *

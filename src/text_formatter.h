@@ -56,6 +56,16 @@ void text_writer_set_timestamp_info(text_writer_t* writer,
                                      int32_t start_time_nsec);
 
 /**
+ * Set custom output format pattern.
+ * Must be called before any log entries are written.
+ *
+ * @param writer Text writer context
+ * @param pattern Format pattern string (NULL = use default)
+ *                See cnanolog.h for pattern token documentation
+ */
+void text_writer_set_pattern(text_writer_t* writer, const char* pattern);
+
+/**
  * Format and write a log entry to text file.
  * This is called by the background thread for each log entry.
  *

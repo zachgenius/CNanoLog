@@ -24,6 +24,7 @@ struct text_writer {
     time_t start_time_sec;
     int32_t start_time_nsec;
     uint64_t bytes_written;  /* Track total bytes written for statistics */
+    const char* pattern;     /* Format pattern (NULL = use default) */
 };
 
 /* ============================================================================
@@ -236,6 +237,100 @@ static void format_message(const log_site_t* site,
     *write_ptr = '\0';
 }
 
+/**
+ * Format entry according to custom pattern.
+ * Replaces pattern tokens with actual values.
+ */
+static void format_entry_with_pattern(
+    const char* pattern,
+    const char* timestamp_buf,
+    const char* level_str,
+    const log_site_t* site,
+    const char* message_buf,
+    char* output,
+    size_t output_size)
+{
+    const char* p = pattern;
+    char* out = output;
+    char* out_end = output + output_size - 1;
+
+    while (*p && out < out_end) {
+        if (*p == '%' && *(p + 1)) {
+            p++;  /* Skip % */
+            switch (*p) {
+                case 't':  /* Full timestamp: YYYY-MM-DD HH:MM:SS.nnnnnnnnn */
+                    out += snprintf(out, out_end - out, "%s", timestamp_buf);
+                    break;
+
+                case 'T': {  /* Short timestamp: HH:MM:SS.nnn (microsecond precision) */
+                    /* Extract time portion and first 3 decimal digits */
+                    if (strlen(timestamp_buf) >= 23) {
+                        /* Format: YYYY-MM-DD HH:MM:SS.nnnnnnnnn */
+                        /*         0123456789012345678901234567 */
+                        /* Extract: HH:MM:SS.nnn (11-22 range, take first 12 chars) */
+                        out += snprintf(out, out_end - out, "%.12s", timestamp_buf + 11);
+                    } else {
+                        out += snprintf(out, out_end - out, "%s", timestamp_buf);
+                    }
+                    break;
+                }
+
+                case 'd':  /* Date only: YYYY-MM-DD */
+                    out += snprintf(out, out_end - out, "%.10s", timestamp_buf);
+                    break;
+
+                case 'D': {  /* Time only: HH:MM:SS */
+                    if (strlen(timestamp_buf) >= 19) {
+                        out += snprintf(out, out_end - out, "%.8s", timestamp_buf + 11);
+                    } else {
+                        out += snprintf(out, out_end - out, "%s", timestamp_buf);
+                    }
+                    break;
+                }
+
+                case 'l':  /* Log level name: INFO, WARN, ERROR, DEBUG */
+                    out += snprintf(out, out_end - out, "%s", level_str);
+                    break;
+
+                case 'L':  /* Log level letter: I, W, E, D */
+                    out += snprintf(out, out_end - out, "%c", level_str[0]);
+                    break;
+
+                case 'f':  /* Filename (basename) */
+                    out += snprintf(out, out_end - out, "%s", site->filename);
+                    break;
+
+                case 'F':  /* Full file path (same as basename for now) */
+                    out += snprintf(out, out_end - out, "%s", site->filename);
+                    break;
+
+                case 'n':  /* Line number */
+                    out += snprintf(out, out_end - out, "%u", site->line_number);
+                    break;
+
+                case 'm':  /* Formatted message */
+                    out += snprintf(out, out_end - out, "%s", message_buf);
+                    break;
+
+                case '%':  /* Literal % */
+                    if (out < out_end) *out++ = '%';
+                    break;
+
+                default:  /* Unknown token - output as-is */
+                    if (out < out_end) *out++ = '%';
+                    if (out < out_end) *out++ = *p;
+                    break;
+            }
+            p++;
+        } else {
+            /* Regular character - copy as-is */
+            *out++ = *p++;
+        }
+    }
+
+    *out = '\0';
+}
+
 /* ============================================================================
  * Public API Implementation
  * ============================================================================ */
@@ -261,6 +356,7 @@ text_writer_t* text_writer_create(const char* file_path) {
     setvbuf(writer->file, NULL, _IOLBF, 0);
 
     writer->bytes_written = 0;
+    writer->pattern = NULL;  /* NULL = use default pattern */
     return writer;
 }
 
@@ -277,6 +373,13 @@ void text_writer_set_timestamp_info(text_writer_t* writer,
     writer->start_timestamp = start_timestamp;
     writer->start_time_sec = start_time_sec;
     writer->start_time_nsec = start_time_nsec;
+}
+
+void text_writer_set_pattern(text_writer_t* writer, const char* pattern) {
+    if (writer == NULL) {
+        return;
+    }
+    writer->pattern = pattern;  /* NULL = use default pattern */
 }
 
 int text_writer_write_entry(text_writer_t* writer,
@@ -309,14 +412,18 @@ int text_writer_write_entry(text_writer_t* writer,
     char message_buf[MESSAGE_BUFFER_SIZE];
     format_message(site, uncompressed_data, message_buf, sizeof(message_buf));
 
-    /* Write complete log line */
+    /* Get level string */
     const char* level_str = level_to_string(site->log_level);
-    int written = fprintf(writer->file, "[%s] [%s] [%s:%u] %s\n",
-                          timestamp_buf,
-                          level_str,
-                          site->filename,
-                          site->line_number,
-                          message_buf);
+
+    /* Format complete log line using pattern */
+    char output_buf[MESSAGE_BUFFER_SIZE + 256];  /* Extra space for timestamp, etc. */
+    const char* pattern = writer->pattern ? writer->pattern : "[%t] [%l] [%f:%n] %m";
+
+    format_entry_with_pattern(pattern, timestamp_buf, level_str, site,
+                              message_buf, output_buf, sizeof(output_buf));
+
+    /* Write formatted line (with newline) */
+    int written = fprintf(writer->file, "%s\n", output_buf);
 
     if (written > 0) {
         writer->bytes_written += written;

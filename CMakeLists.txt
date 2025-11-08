@@ -68,6 +68,7 @@ add_library(cnanolog
     src/cnanolog.c
     src/platform.c
     src/binary_writer.c
+    src/text_formatter.c
     src/compressor.c
     src/log_registry.c
     src/packer.c

@@ -12,6 +12,14 @@ extern "C" {
  * ============================================================================ */
 
 /**
+ * Output format for log files.
+ */
+typedef enum {
+    CNANOLOG_OUTPUT_BINARY = 0,  /* Binary format (default) - requires decompressor */
+    CNANOLOG_OUTPUT_TEXT = 1,    /* Human-readable text format - no decompressor needed */
+} cnanolog_output_format_t;
+
+/**
  * Log rotation policy for date-based rotation.
  */
 typedef enum {
@@ -20,12 +28,14 @@ typedef enum {
 } cnanolog_rotation_policy_t;
 
 /**
- * Configuration for log rotation.
+ * Configuration for log rotation and output format.
  */
 typedef struct {
     cnanolog_rotation_policy_t policy;  /* Rotation policy */
     const char* base_path;               /* Base path for log files (e.g., "app.clog") */
                                          /* Dated files: "app-2025-11-02.clog" */
+    cnanolog_output_format_t format;     /* Output format (binary or text) */
+                                         /* Default: CNANOLOG_OUTPUT_BINARY */
 } cnanolog_rotation_config_t;
 
 /**
@@ -38,20 +48,30 @@ typedef struct {
 int cnanolog_init(const char* log_file_path);
 
 /**
- * Initialize the logging system with rotation support.
+ * Initialize the logging system with rotation and format options.
  * When rotation is enabled, log files are named with dates:
  * - base_path "logs/app.clog" becomes "logs/app-2025-11-02.clog"
  * - Files rotate automatically at midnight (local time)
  *
- * @param config Rotation configuration
+ * @param config Configuration (rotation policy and output format)
  * @return 0 on success, -1 on failure
  *
- * Example (daily rotation):
+ * Example (binary format with daily rotation):
  *   cnanolog_rotation_config_t config = {
  *       .policy = CNANOLOG_ROTATE_DAILY,
- *       .base_path = "logs/app.clog"
+ *       .base_path = "logs/app.clog",
+ *       .format = CNANOLOG_OUTPUT_BINARY  // Default
  *   };
  *   cnanolog_init_ex(&config);
+ *
+ * Example (human-readable text format):
+ *   cnanolog_rotation_config_t config = {
+ *       .policy = CNANOLOG_ROTATE_NONE,
+ *       .base_path = "logs/app.log",
+ *       .format = CNANOLOG_OUTPUT_TEXT  // No decompressor needed
+ *   };
+ *   cnanolog_init_ex(&config);
+ *
  */
 int cnanolog_init_ex(const cnanolog_rotation_config_t* config);
 

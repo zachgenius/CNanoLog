@@ -33,6 +33,7 @@ typedef struct {
     uint32_t line_number;
     uint8_t num_args;
     cnanolog_arg_type_t arg_types[CNANOLOG_MAX_ARGS];
+    const char* text_pattern;  /* Custom text pattern (NULL = use global pattern) */
 } log_site_t;
 
 /* ============================================================================
@@ -66,6 +67,7 @@ void log_registry_init(log_registry_t* registry);
  * multiple times, returns the same log_id.
  *
  * @param arg_types Array of uint8_t enum values (space-efficient from macros)
+ * @param text_pattern Custom text pattern (NULL = use global pattern)
  *
  * Returns: Unique log_id for this site
  */
@@ -75,7 +77,8 @@ uint32_t log_registry_register(log_registry_t* registry,
                                 uint32_t line_number,
                                 const char* format,
                                 uint8_t num_args,
-                                const uint8_t* arg_types);
+                                const uint8_t* arg_types,
+                                const char* text_pattern);
 
 /**
  * Get log site information by log_id.

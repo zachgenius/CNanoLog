@@ -8,6 +8,7 @@
 #include "../include/cnanolog_format.h"
 #include "log_registry.h"
 #include "binary_writer.h"
+#include "text_formatter.h"
 #include "arg_packing.h"
 #include "platform.h"
 #include "staging_buffer.h"
@@ -29,12 +30,21 @@
 #define FLUSH_BATCH_SIZE 2000          /* Flush every N entries */
 #define FLUSH_INTERVAL_MS 200          /* OR flush every N milliseconds */
 
+/**
+ * Per-buffer batch processing size.
+ * Process up to N entries from each staging buffer before moving to next buffer.
+ * Improves cache locality and reduces overhead when queue has many messages.
+ */
+#define BATCH_PROCESS_SIZE 128         /* Max entries to process per buffer per iteration */
+
 /* ============================================================================
  * Global State
  * ============================================================================ */
 
 static log_registry_t g_registry;
+static cnanolog_output_format_t g_output_format = CNANOLOG_OUTPUT_BINARY;
 static binary_writer_t* g_binary_writer = NULL;
+static text_writer_t* g_text_writer = NULL;
 static volatile int g_should_exit = 0;
 static int g_is_initialized = 0;
 
@@ -276,29 +286,37 @@ static int check_and_rotate_if_needed(void) {
         char new_path[512];
         generate_dated_filename(g_base_path, new_path, sizeof(new_path));
 
-        /* Get log sites for dictionary */
-        uint32_t num_sites = 0;
-        const log_site_t* sites = log_registry_get_all(&g_registry, &num_sites);
-
-        /* Get custom levels */
-        uint32_t num_custom_levels = 0;
-        const custom_level_t* custom_levels = _cnanolog_get_custom_levels(&num_custom_levels);
-
-        /* Rotate the log file */
         fprintf(stderr, "cnanolog: Rotating log file to: %s\n", new_path);
-        if (binwriter_rotate(g_binary_writer, new_path, sites, num_sites,
-                           (const custom_level_entry_t*)custom_levels, num_custom_levels,
+
+        /* Rotate based on output format */
+        if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
+            /* TEXT MODE: Just rotate to new file */
+            if (text_writer_rotate(g_text_writer, new_path) != 0) {
+                fprintf(stderr, "cnanolog: Failed to rotate text log file\n");
+                return -1;
+            }
+        } else {
+            /* BINARY MODE: Rotate with dictionary */
+            uint32_t num_sites = 0;
+            const log_site_t* sites = log_registry_get_all(&g_registry, &num_sites);
+
+            uint32_t num_custom_levels = 0;
+            const custom_level_t* custom_levels = _cnanolog_get_custom_levels(&num_custom_levels);
+
+            if (binwriter_rotate(g_binary_writer, new_path, sites, num_sites,
+                               (const custom_level_entry_t*)custom_levels, num_custom_levels,
 #ifndef CNANOLOG_NO_TIMESTAMPS
-                           g_timestamp_frequency,
-                           g_start_timestamp,
-                           g_start_time_sec,
-                           g_start_time_nsec
+                               g_timestamp_frequency,
+                               g_start_timestamp,
+                               g_start_time_sec,
+                               g_start_time_nsec
 #else
-                           0, 0, now, 0
+                               0, 0, now, 0
 #endif
-                          ) != 0) {
-            fprintf(stderr, "cnanolog: Failed to rotate log file\n");
-            return -1;
+                              ) != 0) {
+                fprintf(stderr, "cnanolog: Failed to rotate binary log file\n");
+                return -1;
+            }
         }
     }
 
@@ -314,11 +332,14 @@ int cnanolog_init(const char* log_file_path) {
         return 0;  /* Already initialized */
     }
 
-    /* Initialize with no rotation */
+    /* Initialize with no rotation and binary format (backward compatible) */
     g_rotation_policy = CNANOLOG_ROTATE_NONE;
+    g_output_format = CNANOLOG_OUTPUT_BINARY;
 
-    /* Initialize registry */
-    log_registry_init(&g_registry);
+    /* Initialize registry (only on first init, persists across shutdown/init cycles) */
+    if (g_registry.sites == NULL) {
+        log_registry_init(&g_registry);
+    }
 
     /* Create binary writer */
     g_binary_writer = binwriter_create(log_file_path);
@@ -354,8 +375,10 @@ int cnanolog_init(const char* log_file_path) {
         return -1;
     }
 
-    /* Initialize buffer registry */
-    buffer_registry_init(&g_buffer_registry);
+    /* Initialize buffer registry (only on first init, persists across shutdown/init cycles) */
+    if (g_buffer_registry.count == 0 && g_buffer_registry.buffers[0] == NULL) {
+        buffer_registry_init(&g_buffer_registry);
+    }
 
     /* Start background writer thread */
     if (cnanolog_thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
@@ -379,8 +402,9 @@ int cnanolog_init_ex(const cnanolog_rotation_config_t* config) {
         return 0;  /* Already initialized */
     }
 
-    /* Store rotation configuration */
+    /* Store configuration */
     g_rotation_policy = config->policy;
+    g_output_format = config->format;
     if (config->base_path != NULL) {
         strncpy(g_base_path, config->base_path, sizeof(g_base_path) - 1);
         g_base_path[sizeof(g_base_path) - 1] = '\0';
@@ -396,45 +420,73 @@ int cnanolog_init_ex(const cnanolog_rotation_config_t* config) {
         log_file_path[sizeof(log_file_path) - 1] = '\0';
     }
 
-    /* Initialize registry */
-    log_registry_init(&g_registry);
-
-    /* Create binary writer */
-    g_binary_writer = binwriter_create(log_file_path);
-    if (g_binary_writer == NULL) {
-        fprintf(stderr, "cnanolog_init_ex: Failed to create binary writer\n");
-        log_registry_destroy(&g_registry);
-        return -1;
+    /* Initialize registry (only on first init, persists across shutdown/init cycles) */
+    if (g_registry.sites == NULL) {
+        log_registry_init(&g_registry);
     }
 
-    /* Calibrate timestamp (Phase 5: Measure CPU frequency) */
+    /* Calibrate timestamp (before creating writers) */
 #ifndef CNANOLOG_NO_TIMESTAMPS
     calibrate_timestamp();
-
-    /* Write file header with calibrated frequency */
-    if (binwriter_write_header(g_binary_writer,
-                               g_timestamp_frequency,  /* Calibrated CPU frequency */
-                               g_start_timestamp,
-                               g_start_time_sec,
-                               g_start_time_nsec) != 0) {
-#else
-    /* No timestamps - write header with zeros for timestamp fields */
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    if (binwriter_write_header(g_binary_writer,
-                               0,  /* No timestamp frequency */
-                               0,  /* No start timestamp */
-                               ts.tv_sec,
-                               (int32_t)ts.tv_nsec) != 0) {
 #endif
-        fprintf(stderr, "cnanolog_init_ex: Failed to write header\n");
-        binwriter_close(g_binary_writer, NULL, 0, NULL, 0);
-        log_registry_destroy(&g_registry);
-        return -1;
+
+    /* Create writer based on output format */
+    if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
+        /* Text mode: Create text writer */
+        g_text_writer = text_writer_create(log_file_path);
+        if (g_text_writer == NULL) {
+            fprintf(stderr, "cnanolog_init_ex: Failed to create text writer\n");
+            log_registry_destroy(&g_registry);
+            return -1;
+        }
+
+#ifndef CNANOLOG_NO_TIMESTAMPS
+        /* Set timestamp calibration info for text writer */
+        text_writer_set_timestamp_info(g_text_writer,
+                                        g_timestamp_frequency,
+                                        g_start_timestamp,
+                                        g_start_time_sec,
+                                        g_start_time_nsec);
+#endif
+
+        /* Set custom format pattern (NULL = use default) */
+        text_writer_set_pattern(g_text_writer, config->text_pattern);
+    } else {
+        /* Binary mode: Create binary writer */
+        g_binary_writer = binwriter_create(log_file_path);
+        if (g_binary_writer == NULL) {
+            fprintf(stderr, "cnanolog_init_ex: Failed to create binary writer\n");
+            log_registry_destroy(&g_registry);
+            return -1;
+        }
+
+        /* Write file header */
+#ifndef CNANOLOG_NO_TIMESTAMPS
+        if (binwriter_write_header(g_binary_writer,
+                                   g_timestamp_frequency,
+                                   g_start_timestamp,
+                                   g_start_time_sec,
+                                   g_start_time_nsec) != 0) {
+#else
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        if (binwriter_write_header(g_binary_writer,
+                                   0,  /* No timestamp frequency */
+                                   0,  /* No start timestamp */
+                                   ts.tv_sec,
+                                   (int32_t)ts.tv_nsec) != 0) {
+#endif
+            fprintf(stderr, "cnanolog_init_ex: Failed to write header\n");
+            binwriter_close(g_binary_writer, NULL, 0, NULL, 0);
+            log_registry_destroy(&g_registry);
+            return -1;
+        }
     }
 
-    /* Initialize buffer registry */
-    buffer_registry_init(&g_buffer_registry);
+    /* Initialize buffer registry (only on first init, persists across shutdown/init cycles) */
+    if (g_buffer_registry.count == 0 && g_buffer_registry.buffers[0] == NULL) {
+        buffer_registry_init(&g_buffer_registry);
+    }
 
     /* Initialize current day for rotation */
     if (g_rotation_policy == CNANOLOG_ROTATE_DAILY) {
@@ -446,7 +498,11 @@ int cnanolog_init_ex(const cnanolog_rotation_config_t* config) {
     /* Start background writer thread */
     if (cnanolog_thread_create(&g_writer_thread, writer_thread_main, NULL) != 0) {
         fprintf(stderr, "cnanolog_init_ex: Failed to create writer thread\n");
-        binwriter_close(g_binary_writer, NULL, 0, NULL, 0);
+        if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
+            text_writer_close(g_text_writer);
+        } else {
+            binwriter_close(g_binary_writer, NULL, 0, NULL, 0);
+        }
         log_registry_destroy(&g_registry);
         return -1;
     }
@@ -471,6 +527,11 @@ void cnanolog_shutdown(void) {
     /*
      * Final flush of all staging buffers.
      * Safe without lock: background thread has exited, no new logs can arrive.
+     *
+     * NOTE: We do NOT destroy the staging buffers here.
+     * Thread-local variables still point to these buffers, and destroying them
+     * would cause undefined behavior on re-initialization when threads try to
+     * write to freed memory. The buffers persist across init/shutdown cycles.
      */
     char temp_buf[MAX_LOG_ENTRY_SIZE];
     uint32_t num_buffers = g_buffer_registry.count;  /* Read atomic counter */
@@ -500,42 +561,66 @@ void cnanolog_shutdown(void) {
                 continue;  /* Continue processing from beginning */
             }
 
-            /* Write real log entry */
-            binwriter_write_entry(g_binary_writer,
-                                header->log_id,
+            /* Write real log entry based on output format */
+            if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
+                text_writer_write_entry(g_text_writer,
+                                       header->log_id,
 #ifndef CNANOLOG_NO_TIMESTAMPS
-                                header->timestamp,
+                                       header->timestamp,
 #else
-                                0,  /* No timestamp */
+                                       0,  /* No timestamp */
 #endif
-                                temp_buf + sizeof(cnanolog_entry_header_t),
-                                header->data_length);
+                                       temp_buf + sizeof(cnanolog_entry_header_t),
+                                       header->data_length,
+                                       &g_registry);
+            } else {
+                binwriter_write_entry(g_binary_writer,
+                                    header->log_id,
+#ifndef CNANOLOG_NO_TIMESTAMPS
+                                    header->timestamp,
+#else
+                                    0,  /* No timestamp */
+#endif
+                                    temp_buf + sizeof(cnanolog_entry_header_t),
+                                    header->data_length);
+            }
 
             staging_consume(sb, nread);
         }
 
-        /* Destroy the buffer */
-        staging_buffer_destroy(sb);
+        /* NOTE: Buffer persists - do NOT destroy */
     }
-    g_buffer_registry.count = 0;
+    /* NOTE: Do NOT reset count - buffer registry persists across shutdown/init cycles */
 
-    /* Get all registered sites for dictionary */
-    uint32_t num_sites = 0;
-    const log_site_t* sites = log_registry_get_all(&g_registry, &num_sites);
+    /* Close writer based on output format */
+    if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
+        /* TEXT MODE: Just close the file */
+        text_writer_close(g_text_writer);
+        g_text_writer = NULL;
+    } else {
+        /* BINARY MODE: Close and write dictionary */
+        uint32_t num_sites = 0;
+        const log_site_t* sites = log_registry_get_all(&g_registry, &num_sites);
 
-    /* Get custom levels */
-    uint32_t num_custom_levels = 0;
-    const custom_level_t* custom_levels = _cnanolog_get_custom_levels(&num_custom_levels);
+        uint32_t num_custom_levels = 0;
+        const custom_level_t* custom_levels = _cnanolog_get_custom_levels(&num_custom_levels);
 
-    /* Close binary writer (writes dictionary) */
-    if (binwriter_close(g_binary_writer, sites, num_sites,
-                      (const custom_level_entry_t*)custom_levels, num_custom_levels) != 0) {
-        fprintf(stderr, "cnanolog_shutdown: Failed to close binary writer\n");
+        if (binwriter_close(g_binary_writer, sites, num_sites,
+                          (const custom_level_entry_t*)custom_levels, num_custom_levels) != 0) {
+            fprintf(stderr, "cnanolog_shutdown: Failed to close binary writer\n");
+        }
     }
 
-    /* Clean up */
-    log_registry_destroy(&g_registry);
+    /*
+     * NOTE: We do NOT destroy the log registry here.
+     * Log sites are registered with cached IDs in static variables (see LOG_* macros).
+     * If we destroy the registry, those cached IDs become invalid on re-initialization.
+     * Keeping the registry alive across init/shutdown cycles allows proper re-use.
+     * The registry uses minimal memory and doesn't hurt to keep it.
+     */
 
+    /* Reset state for potential re-initialization */
+    g_should_exit = 0;
     g_is_initialized = 0;
 }
 
@@ -548,13 +633,14 @@ uint32_t _cnanolog_register_site(cnanolog_level_t level,
                                   uint32_t line_number,
                                   const char* format,
                                   uint8_t num_args,
-                                  const uint8_t* arg_types) {
+                                  const uint8_t* arg_types,
+                                  const char* text_pattern) {
     if (!g_is_initialized) {
         return UINT32_MAX;
     }
 
     return log_registry_register(&g_registry, level, filename, line_number,
-                                format, num_args, arg_types);
+                                format, num_args, arg_types, text_pattern);
 }
 
 /* ============================================================================
@@ -689,7 +775,10 @@ static void* writer_thread_main(void* arg) {
                 continue;
             }
 
-            while (staging_available(sb) >= sizeof(cnanolog_entry_header_t)) {
+            /* Batch processing: process up to BATCH_PROCESS_SIZE entries from this buffer */
+            size_t batch_count = 0;
+            while (batch_count < BATCH_PROCESS_SIZE &&
+                   staging_available(sb) >= sizeof(cnanolog_entry_header_t)) {
                 size_t nread = staging_read(sb, temp_buf, sizeof(cnanolog_entry_header_t));
                 if (nread < sizeof(cnanolog_entry_header_t)) {
                     break;
@@ -715,48 +804,66 @@ static void* writer_thread_main(void* arg) {
                 }
 
                 header = (cnanolog_entry_header_t*)temp_buf;
-                const log_site_t* site = log_registry_get(&g_registry, header->log_id);
 
-                size_t compressed_len = 0;
-                const char* data_to_write;
-                uint16_t data_len_to_write;
-
-                if (site != NULL && site->num_args > 0) {
-                    int compress_result = compress_entry_args(
-                        temp_buf + sizeof(cnanolog_entry_header_t),
-                        header->data_length,
-                        compressed_buf,
-                        &compressed_len,
-                        site);
-
-                    if (compress_result == 0) {
-                        data_to_write = compressed_buf;
-                        data_len_to_write = (uint16_t)compressed_len;
-#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
-                        g_stats.bytes_compressed_from += header->data_length;
-                        g_stats.bytes_compressed_to += compressed_len;
+                /* Branch based on output format */
+                if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
+                    /* TEXT MODE: Format and write human-readable text */
+                    text_writer_write_entry(g_text_writer,
+                                           header->log_id,
+#ifndef CNANOLOG_NO_TIMESTAMPS
+                                           header->timestamp,
+#else
+                                           0,  /* No timestamp */
 #endif
+                                           temp_buf + sizeof(cnanolog_entry_header_t),
+                                           header->data_length,
+                                           &g_registry);
+                } else {
+                    /* BINARY MODE: Compress and write binary data */
+                    const log_site_t* site = log_registry_get(&g_registry, header->log_id);
+
+                    size_t compressed_len = 0;
+                    const char* data_to_write;
+                    uint16_t data_len_to_write;
+
+                    if (site != NULL && site->num_args > 0) {
+                        int compress_result = compress_entry_args(
+                            temp_buf + sizeof(cnanolog_entry_header_t),
+                            header->data_length,
+                            compressed_buf,
+                            &compressed_len,
+                            site);
+
+                        if (compress_result == 0) {
+                            data_to_write = compressed_buf;
+                            data_len_to_write = (uint16_t)compressed_len;
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
+                            g_stats.bytes_compressed_from += header->data_length;
+                            g_stats.bytes_compressed_to += compressed_len;
+#endif
+                        } else {
+                            data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
+                            data_len_to_write = header->data_length;
+                        }
                     } else {
                         data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
                         data_len_to_write = header->data_length;
                     }
-                } else {
-                    data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
-                    data_len_to_write = header->data_length;
-                }
 
-                binwriter_write_entry(g_binary_writer,
-                                    header->log_id,
+                    binwriter_write_entry(g_binary_writer,
+                                        header->log_id,
 #ifndef CNANOLOG_NO_TIMESTAMPS
-                                    header->timestamp,
+                                        header->timestamp,
 #else
-                                    0,  /* No timestamp */
+                                        0,  /* No timestamp */
 #endif
-                                    data_to_write,
-                                    data_len_to_write);
+                                        data_to_write,
+                                        data_len_to_write);
+                }
 
                 staging_consume(sb, entry_size);
                 entries_since_flush++;
+                batch_count++;  /* Increment batch counter */
                 found_work = 1;
             }
         }
@@ -777,7 +884,12 @@ static void* writer_thread_main(void* arg) {
         if (entries_since_flush >= FLUSH_BATCH_SIZE ||
             (entries_since_flush > 0 && !found_work)) {
 #endif
-            binwriter_flush(g_binary_writer);
+            /* Flush appropriate writer */
+            if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
+                text_writer_flush(g_text_writer);
+            } else {
+                binwriter_flush(g_binary_writer);
+            }
             entries_since_flush = 0;
 #ifndef CNANOLOG_NO_TIMESTAMPS
             last_flush_time = now;
@@ -883,17 +995,21 @@ void cnanolog_get_stats(cnanolog_stats_t* stats) {
     stats->dropped_logs = g_stats.dropped_logs;
     stats->background_wakeups = g_stats.background_wakeups;
 
-    if (g_binary_writer != NULL) {
+    /* Get bytes written from appropriate writer */
+    if (g_output_format == CNANOLOG_OUTPUT_TEXT && g_text_writer != NULL) {
+        stats->total_bytes_written = text_writer_get_bytes_written(g_text_writer);
+    } else if (g_binary_writer != NULL) {
         stats->total_bytes_written = binwriter_get_bytes_written(g_binary_writer);
     } else {
         stats->total_bytes_written = 0;
     }
 
-    if (g_stats.bytes_compressed_from > 0) {
+    /* Compression ratio only applies to binary mode */
+    if (g_output_format == CNANOLOG_OUTPUT_BINARY && g_stats.bytes_compressed_from > 0) {
         stats->compression_ratio_x100 =
             (g_stats.bytes_compressed_from * 100) / g_stats.bytes_compressed_to;
     } else {
-        stats->compression_ratio_x100 = 100;
+        stats->compression_ratio_x100 = 100;  /* No compression for text mode */
     }
 
     stats->staging_buffers_active = g_buffer_registry.count;

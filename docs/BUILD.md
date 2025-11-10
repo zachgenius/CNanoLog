@@ -271,11 +271,12 @@ gcc myapp.c \
 
 ## Summary
 
-✅ **Modular build system** with subdirectories
-✅ **6 comprehensive examples** covering all features
-✅ **15 tests** with CTest integration
-✅ **Flexible build options** (examples/tests on/off)
-✅ **Cross-platform support** (Linux/macOS/Windows)
-✅ **Easy integration** into existing projects
+**Build system features:**
+- Modular structure with subdirectories
+- 6 comprehensive examples covering all features
+- 15 tests with CTest integration
+- Flexible build options (examples/tests on/off)
+- Cross-platform support (Linux/macOS/Windows)
+- Easy integration into existing projects
 
-All examples build successfully and demonstrate the full feature set of CNanoLog!
+All examples build successfully and demonstrate the full feature set of CNanoLog.

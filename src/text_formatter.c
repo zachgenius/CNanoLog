@@ -11,7 +11,7 @@
 #include <time.h>
 
 /* Buffer size for message formatting */
-#define MESSAGE_BUFFER_SIZE 2048
+#define MESSAGE_BUFFER_SIZE 8192
 
 /* ============================================================================
  * Text Writer Implementation

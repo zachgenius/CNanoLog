@@ -295,6 +295,20 @@ static int decompress_entry_args(const char* compressed,
 
     for (uint8_t i = 0; i < dict->num_args; i++) {
         switch (dict->arg_types[i]) {
+            case ARG_TYPE_CHAR: {
+                if (read_ptr >= end_ptr) return -1;
+
+                uint8_t nibble = get_nibble(nibbles, nibble_idx++);
+                /* Nibble should be 1 for char */
+                if (nibble != 1) return -1;
+
+                char val;
+                memcpy(&val, read_ptr, sizeof(char));
+                read_ptr += sizeof(char);
+                int_values[int_arg_idx++] = (uint64_t)(unsigned char)val;  /* Store as uint64 */
+                break;
+            }
+
             case ARG_TYPE_INT32: {
                 if (read_ptr >= end_ptr) return -1;
 
@@ -394,6 +408,14 @@ static int decompress_entry_args(const char* compressed,
 
     for (uint8_t i = 0; i < dict->num_args; i++) {
         switch (dict->arg_types[i]) {
+            case ARG_TYPE_CHAR: {
+                if (write_ptr + sizeof(char) > write_end) return -1;
+                char val = (char)int_values[int_arg_idx++];
+                memcpy(write_ptr, &val, sizeof(char));
+                write_ptr += sizeof(char);
+                break;
+            }
+
             case ARG_TYPE_INT32: {
                 if (write_ptr + sizeof(int32_t) > write_end) return -1;
                 int32_t val = (int32_t)int_values[int_arg_idx++];
@@ -514,6 +536,15 @@ static void format_log_message(decompressor_ctx_t* ctx, dict_entry_t* dict,
 
             /* Extract and format argument based on type */
             switch (arg_type) {
+                case ARG_TYPE_CHAR: {
+                    char val;
+                    memcpy(&val, read_ptr, sizeof(val));
+                    read_ptr += sizeof(val);
+                    write_ptr += snprintf(write_ptr,
+                                         sizeof(formatted) - (write_ptr - formatted),
+                                         "%c", (int)val);
+                    break;
+                }
                 case ARG_TYPE_INT32: {
                     int32_t val;
                     memcpy(&val, read_ptr, sizeof(val));

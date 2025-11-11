@@ -677,6 +677,9 @@ void _cnanolog_log_binary(uint32_t log_id,
         }
 
         switch (arg_types[i]) {
+            case ARG_TYPE_CHAR:
+                reserve_size += 1;
+                break;
             case ARG_TYPE_INT32:
             case ARG_TYPE_UINT32:
                 reserve_size += 4;

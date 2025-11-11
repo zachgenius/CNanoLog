@@ -32,6 +32,15 @@ static inline size_t arg_pack_write_fast(char* buffer, size_t buffer_size,
 
     for (uint8_t i = 0; i < num_args; i++) {
         switch (arg_types[i]) {
+            case ARG_TYPE_CHAR: {
+                /* char is promoted to int in varargs, but we store as 1 byte */
+                int val = va_arg(args, int);
+                char c = (char)val;
+                if (write_ptr + sizeof(c) > buffer_end) return 0;
+                memcpy(write_ptr, &c, sizeof(c));
+                write_ptr += sizeof(c);
+                break;
+            }
             case ARG_TYPE_INT32: {
                 int32_t val = va_arg(args, int32_t);
                 if (write_ptr + sizeof(val) > buffer_end) return 0;

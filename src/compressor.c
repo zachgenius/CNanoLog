@@ -60,6 +60,17 @@ int compress_entry_args(const char* uncompressed,
 
     for (uint8_t i = 0; i < site->num_args; i++) {
         switch (site->arg_types[i]) {
+            case ARG_TYPE_CHAR: {
+                /* Char: store as-is (1 byte, no compression needed) */
+                memcpy(write_ptr, read_ptr, sizeof(char));
+                read_ptr += sizeof(char);
+                write_ptr += sizeof(char);
+
+                /* Nibble = 1 (always 1 byte for char) */
+                set_nibble(nibbles, nibble_idx++, 1);
+                break;
+            }
+
             case ARG_TYPE_INT32: {
                 int32_t val;
                 memcpy(&val, read_ptr, sizeof(int32_t));
@@ -167,6 +178,7 @@ int compress_entry_args(const char* uncompressed,
         } else {
             /* Skip non-strings (already processed in pass 1) */
             switch (site->arg_types[i]) {
+                case ARG_TYPE_CHAR:   read_ptr += sizeof(char); break;
                 case ARG_TYPE_INT32:  read_ptr += sizeof(int32_t); break;
                 case ARG_TYPE_INT64:  read_ptr += sizeof(int64_t); break;
                 case ARG_TYPE_UINT32: read_ptr += sizeof(uint32_t); break;

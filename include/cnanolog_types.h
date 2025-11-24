@@ -28,10 +28,21 @@
             static constexpr uint8_t value() {
                 using U = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
 
-                // String types
+                // String types (including char arrays)
                 if (std::is_same<U, char*>::value || std::is_same<U, const char*>::value ||
-                    std::is_same<U, char* const>::value) {
-                    return ARG_TYPE_STRING;
+                    std::is_same<U, char* const>::value || std::is_array<U>::value) {
+                    // Check if it's a char array
+                    if (std::is_array<U>::value && std::is_same<typename std::remove_extent<U>::type, char>::value) {
+                        return ARG_TYPE_STRING;
+                    }
+                    if (!std::is_array<U>::value) {
+                        return ARG_TYPE_STRING;
+                    }
+                }
+
+                // Char type (for %c format specifier)
+                if (std::is_same<U, char>::value) {
+                    return ARG_TYPE_CHAR;
                 }
 
                 // Floating point
@@ -39,8 +50,8 @@
                     return ARG_TYPE_DOUBLE;
                 }
 
-                // Signed integers
-                if (std::is_integral<U>::value && std::is_signed<U>::value) {
+                // Signed integers (excluding char)
+                if (std::is_integral<U>::value && std::is_signed<U>::value && !std::is_same<U, char>::value) {
                     return sizeof(U) <= 4 ? ARG_TYPE_INT32 : ARG_TYPE_INT64;
                 }
 
@@ -51,6 +62,11 @@
 
                 // Pointers
                 if (std::is_pointer<U>::value) {
+                    return ARG_TYPE_POINTER;
+                }
+
+                // Arrays (non-char)
+                if (std::is_array<U>::value) {
                     return ARG_TYPE_POINTER;
                 }
 
@@ -81,7 +97,7 @@ extern "C" {  /* Re-open extern "C" for remaining content */
         #define CNANOLOG_ARG_TYPE(x) _Generic((x), \
             int:                ARG_TYPE_INT32, \
             short:              ARG_TYPE_INT32, \
-            char:               ARG_TYPE_INT32, \
+            char:               ARG_TYPE_CHAR, \
             signed char:        ARG_TYPE_INT32, \
             \
             long:               ARG_TYPE_INT64, \

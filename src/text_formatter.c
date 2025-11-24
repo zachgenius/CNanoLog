@@ -11,7 +11,7 @@
 #include <time.h>
 
 /* Buffer size for message formatting */
-#define MESSAGE_BUFFER_SIZE 2048
+#define MESSAGE_BUFFER_SIZE 8192
 
 /* ============================================================================
  * Text Writer Implementation
@@ -150,6 +150,15 @@ static void format_message(const log_site_t* site,
             /* Extract and format argument */
             int remaining = output_end - write_ptr;
             switch (arg_type) {
+                case ARG_TYPE_CHAR: {
+                    char val;
+                    memcpy(&val, read_ptr, sizeof(val));
+                    read_ptr += sizeof(val);
+                    int written = snprintf(write_ptr, remaining, "%c", (int)val);
+                    write_ptr += (written > 0 && written < remaining) ? written : 0;
+                    break;
+                }
+
                 case ARG_TYPE_INT32: {
                     int32_t val;
                     memcpy(&val, read_ptr, sizeof(val));

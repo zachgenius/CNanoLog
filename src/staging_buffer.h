@@ -28,11 +28,12 @@ extern "C" {
  * ============================================================================ */
 
 /**
- * Staging buffer size per thread (12MB default).
+ * Staging buffer size per thread (128MB for high-frequency market data).
  * Larger size = better burst handling but more memory per thread.
  * Memory usage = STAGING_BUFFER_SIZE × number of logging threads
+ * For market data: handles ~2-5M entries/thread at 100-200 bytes/entry
  */
-#define STAGING_BUFFER_SIZE (12 * 1024 * 1024)
+#define STAGING_BUFFER_SIZE (128 * 1024 * 1024)
 
 /**
  * Wrap marker log_id value.

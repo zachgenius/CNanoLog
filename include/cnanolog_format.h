@@ -50,6 +50,7 @@ typedef enum {
     ARG_TYPE_DOUBLE  = 5,   /* double, float (promoted) */
     ARG_TYPE_STRING  = 6,   /* char*, const char* */
     ARG_TYPE_POINTER = 7,   /* void*, any pointer type */
+    ARG_TYPE_CHAR    = 8,   /* char (for %c format specifier) */
 } cnanolog_arg_type_t;
 
 /* ============================================================================

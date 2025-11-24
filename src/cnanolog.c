@@ -20,22 +20,24 @@
 #include <string.h>
 #include <time.h>
 
-#define MAX_LOG_ENTRY_SIZE 4096
+#define MAX_LOG_ENTRY_SIZE 16384
 #define MAX_STAGING_BUFFERS 256  /* Maximum number of concurrent threads */
 
 /**
  * Batch processing configuration for background writer.
  * Flushes when: FLUSH_BATCH_SIZE entries OR FLUSH_INTERVAL_MS elapsed OR buffer empty.
+ * For market data: larger batches reduce I/O overhead during high-volume periods
  */
-#define FLUSH_BATCH_SIZE 2000          /* Flush every N entries */
-#define FLUSH_INTERVAL_MS 200          /* OR flush every N milliseconds */
+#define FLUSH_BATCH_SIZE 20000         /* Flush every N entries */
+#define FLUSH_INTERVAL_MS 100          /* OR flush every N milliseconds */
 
 /**
  * Per-buffer batch processing size.
  * Process up to N entries from each staging buffer before moving to next buffer.
  * Improves cache locality and reduces overhead when queue has many messages.
+ * For market data: larger batches improve throughput during high-volume periods
  */
-#define BATCH_PROCESS_SIZE 128         /* Max entries to process per buffer per iteration */
+#define BATCH_PROCESS_SIZE 1000        /* Max entries to process per buffer per iteration */
 
 /* ============================================================================
  * Global State
@@ -677,6 +679,9 @@ void _cnanolog_log_binary(uint32_t log_id,
         }
 
         switch (arg_types[i]) {
+            case ARG_TYPE_CHAR:
+                reserve_size += 1;
+                break;
             case ARG_TYPE_INT32:
             case ARG_TYPE_UINT32:
                 reserve_size += 4;

@@ -5,7 +5,21 @@
 #include <stddef.h>  /* For NULL */
 
 #ifdef __cplusplus
+#include <atomic>
+#define CNANOLOG_CACHED_ID_TYPE std::atomic<uint32_t>
+#define CNANOLOG_CACHED_ID_INIT(value) {value}
+#define CNANOLOG_CACHED_ID_LOAD(value) (value).load(std::memory_order_acquire)
+#define CNANOLOG_CACHED_ID_STORE(target, value) \
+    (target).store((value), std::memory_order_release)
 extern "C" {
+#else
+#include <stdatomic.h>
+#define CNANOLOG_CACHED_ID_TYPE _Atomic uint32_t
+#define CNANOLOG_CACHED_ID_INIT(value) ATOMIC_VAR_INIT(value)
+#define CNANOLOG_CACHED_ID_LOAD(value) \
+    atomic_load_explicit(&(value), memory_order_acquire)
+#define CNANOLOG_CACHED_ID_STORE(target, value) \
+    atomic_store_explicit(&(target), (value), memory_order_release)
 #endif
 
 /* ============================================================================
@@ -259,28 +273,38 @@ void _cnanolog_log_binary(uint32_t log_id,
 /* Base macro for logs WITH NO arguments */
 #define CNANOLOG_LOG0(level, format) \
     do { \
-        static uint32_t __cnanolog_cached_id = UINT32_MAX; \
+        static CNANOLOG_CACHED_ID_TYPE __cnanolog_cached_id = \
+            CNANOLOG_CACHED_ID_INIT(UINT32_MAX); \
         static const uint8_t __cnanolog_empty_types[] = {0}; \
-        if (__cnanolog_cached_id == UINT32_MAX) { \
-            __cnanolog_cached_id = _cnanolog_register_site( \
+        uint32_t __cnanolog_log_id = CNANOLOG_CACHED_ID_LOAD(__cnanolog_cached_id); \
+        if (__cnanolog_log_id == UINT32_MAX) { \
+            __cnanolog_log_id = _cnanolog_register_site( \
                 level, __FILE__, __LINE__, format, 0, __cnanolog_empty_types, NULL); \
+            if (__cnanolog_log_id != UINT32_MAX) { \
+                CNANOLOG_CACHED_ID_STORE(__cnanolog_cached_id, __cnanolog_log_id); \
+            } \
         } \
-        _cnanolog_log_binary(__cnanolog_cached_id, 0, __cnanolog_empty_types); \
+        _cnanolog_log_binary(__cnanolog_log_id, 0, __cnanolog_empty_types); \
     } while(0)
 
 /* Base macro for logs WITH arguments */
 #define CNANOLOG_LOG_ARGS(level, format, ...) \
     do { \
-        static uint32_t __cnanolog_cached_id = UINT32_MAX; \
+        static CNANOLOG_CACHED_ID_TYPE __cnanolog_cached_id = \
+            CNANOLOG_CACHED_ID_INIT(UINT32_MAX); \
         static uint8_t __cnanolog_arg_types[] = CNANOLOG_ARG_TYPES(__VA_ARGS__); \
         static const uint8_t __cnanolog_num_args = CNANOLOG_COUNT_ARGS(__VA_ARGS__); \
-        if (__cnanolog_cached_id == UINT32_MAX) { \
-            __cnanolog_cached_id = _cnanolog_register_site( \
+        uint32_t __cnanolog_log_id = CNANOLOG_CACHED_ID_LOAD(__cnanolog_cached_id); \
+        if (__cnanolog_log_id == UINT32_MAX) { \
+            __cnanolog_log_id = _cnanolog_register_site( \
                 level, __FILE__, __LINE__, format, \
                 __cnanolog_num_args, \
                 __cnanolog_arg_types, NULL); \
+            if (__cnanolog_log_id != UINT32_MAX) { \
+                CNANOLOG_CACHED_ID_STORE(__cnanolog_cached_id, __cnanolog_log_id); \
+            } \
         } \
-        _cnanolog_log_binary(__cnanolog_cached_id, \
+        _cnanolog_log_binary(__cnanolog_log_id, \
                             __cnanolog_num_args, \
                             __cnanolog_arg_types, \
                             ##__VA_ARGS__); \
@@ -289,16 +313,21 @@ void _cnanolog_log_binary(uint32_t log_id,
 /* Base macro for logs WITH arguments AND custom text pattern */
 #define CNANOLOG_LOG_ARGS_FMT(level, text_pattern, format, ...) \
     do { \
-        static uint32_t __cnanolog_cached_id = UINT32_MAX; \
+        static CNANOLOG_CACHED_ID_TYPE __cnanolog_cached_id = \
+            CNANOLOG_CACHED_ID_INIT(UINT32_MAX); \
         static uint8_t __cnanolog_arg_types[] = CNANOLOG_ARG_TYPES(__VA_ARGS__); \
         static const uint8_t __cnanolog_num_args = CNANOLOG_COUNT_ARGS(__VA_ARGS__); \
-        if (__cnanolog_cached_id == UINT32_MAX) { \
-            __cnanolog_cached_id = _cnanolog_register_site( \
+        uint32_t __cnanolog_log_id = CNANOLOG_CACHED_ID_LOAD(__cnanolog_cached_id); \
+        if (__cnanolog_log_id == UINT32_MAX) { \
+            __cnanolog_log_id = _cnanolog_register_site( \
                 level, __FILE__, __LINE__, format, \
                 __cnanolog_num_args, \
                 __cnanolog_arg_types, text_pattern); \
+            if (__cnanolog_log_id != UINT32_MAX) { \
+                CNANOLOG_CACHED_ID_STORE(__cnanolog_cached_id, __cnanolog_log_id); \
+            } \
         } \
-        _cnanolog_log_binary(__cnanolog_cached_id, \
+        _cnanolog_log_binary(__cnanolog_log_id, \
                             __cnanolog_num_args, \
                             __cnanolog_arg_types, \
                             ##__VA_ARGS__); \

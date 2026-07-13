@@ -119,22 +119,39 @@ uint32_t log_registry_register(log_registry_t* registry,
  * Registry Query
  * ============================================================================ */
 
-const log_site_t* log_registry_get(const log_registry_t* registry, uint32_t log_id) {
-    if (log_id >= registry->count) {
-        return NULL;
+int log_registry_get(log_registry_t* registry, uint32_t log_id, log_site_t* out_site) {
+    if (out_site == NULL) {
+        return -1;
     }
-    return &registry->sites[log_id];
+
+    cnanolog_mutex_lock(&registry->lock);
+    if (log_id >= registry->count) {
+        cnanolog_mutex_unlock(&registry->lock);
+        return -1;
+    }
+
+    *out_site = registry->sites[log_id];
+    cnanolog_mutex_unlock(&registry->lock);
+    return 0;
 }
 
-uint32_t log_registry_count(const log_registry_t* registry) {
-    return registry->count;
+uint32_t log_registry_count(log_registry_t* registry) {
+    cnanolog_mutex_lock(&registry->lock);
+    uint32_t count = registry->count;
+    cnanolog_mutex_unlock(&registry->lock);
+    return count;
 }
 
-const log_site_t* log_registry_get_all(const log_registry_t* registry, uint32_t* out_count) {
+const log_site_t* log_registry_lock_all(log_registry_t* registry, uint32_t* out_count) {
+    cnanolog_mutex_lock(&registry->lock);
     if (out_count != NULL) {
         *out_count = registry->count;
     }
     return registry->sites;
+}
+
+void log_registry_unlock(log_registry_t* registry) {
+    cnanolog_mutex_unlock(&registry->lock);
 }
 
 /* ============================================================================

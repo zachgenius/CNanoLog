@@ -300,12 +300,12 @@ static int check_and_rotate_if_needed(void) {
         } else {
             /* BINARY MODE: Rotate with dictionary */
             uint32_t num_sites = 0;
-            const log_site_t* sites = log_registry_get_all(&g_registry, &num_sites);
+            const log_site_t* sites = log_registry_lock_all(&g_registry, &num_sites);
 
             uint32_t num_custom_levels = 0;
             const custom_level_t* custom_levels = _cnanolog_get_custom_levels(&num_custom_levels);
 
-            if (binwriter_rotate(g_binary_writer, new_path, sites, num_sites,
+            int rotate_result = binwriter_rotate(g_binary_writer, new_path, sites, num_sites,
                                (const custom_level_entry_t*)custom_levels, num_custom_levels,
 #ifndef CNANOLOG_NO_TIMESTAMPS
                                g_timestamp_frequency,
@@ -315,7 +315,10 @@ static int check_and_rotate_if_needed(void) {
 #else
                                0, 0, now, 0
 #endif
-                              ) != 0) {
+                              );
+            log_registry_unlock(&g_registry);
+
+            if (rotate_result != 0) {
                 fprintf(stderr, "cnanolog: Failed to rotate binary log file\n");
                 return -1;
             }
@@ -602,13 +605,16 @@ void cnanolog_shutdown(void) {
     } else {
         /* BINARY MODE: Close and write dictionary */
         uint32_t num_sites = 0;
-        const log_site_t* sites = log_registry_get_all(&g_registry, &num_sites);
+        const log_site_t* sites = log_registry_lock_all(&g_registry, &num_sites);
 
         uint32_t num_custom_levels = 0;
         const custom_level_t* custom_levels = _cnanolog_get_custom_levels(&num_custom_levels);
 
-        if (binwriter_close(g_binary_writer, sites, num_sites,
-                          (const custom_level_entry_t*)custom_levels, num_custom_levels) != 0) {
+        int close_result = binwriter_close(g_binary_writer, sites, num_sites,
+                          (const custom_level_entry_t*)custom_levels, num_custom_levels);
+        log_registry_unlock(&g_registry);
+
+        if (close_result != 0) {
             fprintf(stderr, "cnanolog_shutdown: Failed to close binary writer\n");
         }
     }
@@ -728,6 +734,14 @@ void _cnanolog_log_binary(uint32_t log_id,
         }
     }
 
+    if (unlikely(arg_data_size > UINT16_MAX)) {
+        staging_adjust_reservation(sb, reserve_size, 0);
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
+        g_stats.dropped_logs++;
+#endif
+        return;
+    }
+
     header->data_length = (uint16_t)arg_data_size;
     size_t actual_entry_size = sizeof(cnanolog_entry_header_t) + arg_data_size;
 
@@ -825,19 +839,20 @@ static void* writer_thread_main(void* arg) {
                                            &g_registry);
                 } else {
                     /* BINARY MODE: Compress and write binary data */
-                    const log_site_t* site = log_registry_get(&g_registry, header->log_id);
+                    log_site_t site;
+                    int site_found = log_registry_get(&g_registry, header->log_id, &site) == 0;
 
                     size_t compressed_len = 0;
                     const char* data_to_write;
                     uint16_t data_len_to_write;
 
-                    if (site != NULL && site->num_args > 0) {
+                    if (site_found && site.num_args > 0) {
                         int compress_result = compress_entry_args(
                             temp_buf + sizeof(cnanolog_entry_header_t),
                             header->data_length,
                             compressed_buf,
                             &compressed_len,
-                            site);
+                            &site);
 
                         if (compress_result == 0) {
                             data_to_write = compressed_buf;

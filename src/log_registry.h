@@ -42,7 +42,7 @@ typedef struct {
 
 /**
  * Registry that stores all log sites.
- * Thread-safe for concurrent registration.
+ * Thread-safe for concurrent registration and lookup.
  */
 typedef struct {
     log_site_t* sites;       /* Array of registered sites */
@@ -81,23 +81,29 @@ uint32_t log_registry_register(log_registry_t* registry,
                                 const char* text_pattern);
 
 /**
- * Get log site information by log_id.
- * Returns NULL if log_id is invalid.
+ * Copy log site information for a log_id into caller-owned storage.
+ * Returns 0 on success, -1 if log_id is invalid.
  *
- * Note: Returned pointer is valid as long as registry exists.
+ * The copied string pointers remain valid as long as the registered string
+ * literals remain valid.
  */
-const log_site_t* log_registry_get(const log_registry_t* registry, uint32_t log_id);
+int log_registry_get(log_registry_t* registry, uint32_t log_id, log_site_t* out_site);
 
 /**
  * Get the total number of registered sites.
  */
-uint32_t log_registry_count(const log_registry_t* registry);
+uint32_t log_registry_count(log_registry_t* registry);
 
 /**
- * Get all registered sites (for dictionary writing).
- * Returns pointer to internal array. Valid as long as registry exists.
+ * Lock the registry and get all registered sites for dictionary writing.
+ * The returned pointer remains valid until log_registry_unlock() is called.
  */
-const log_site_t* log_registry_get_all(const log_registry_t* registry, uint32_t* out_count);
+const log_site_t* log_registry_lock_all(log_registry_t* registry, uint32_t* out_count);
+
+/**
+ * Unlock a registry previously locked by log_registry_lock_all().
+ */
+void log_registry_unlock(log_registry_t* registry);
 
 /**
  * Clean up the registry.

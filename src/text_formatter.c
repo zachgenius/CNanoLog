@@ -396,14 +396,14 @@ int text_writer_write_entry(text_writer_t* writer,
                              uint64_t timestamp,
                              const char* arg_data,
                              uint16_t arg_data_len,
-                             const log_registry_t* registry) {
+                             log_registry_t* registry) {
     if (writer == NULL || writer->file == NULL || registry == NULL) {
         return -1;
     }
 
     /* Lookup log site */
-    const log_site_t* site = log_registry_get(registry, log_id);
-    if (site == NULL) {
+    log_site_t site;
+    if (log_registry_get(registry, log_id, &site) != 0) {
         fprintf(writer->file, "[UNKNOWN_LOG_ID_%u]\n", log_id);
         return -1;
     }
@@ -415,22 +415,22 @@ int text_writer_write_entry(text_writer_t* writer,
     /* Get uncompressed data (already uncompressed from staging buffer) */
     size_t uncompressed_len = 0;
     const char* uncompressed_data = get_uncompressed_data(writer, arg_data, arg_data_len,
-                                                           site, &uncompressed_len);
+                                                           &site, &uncompressed_len);
 
     /* Format message */
     char message_buf[MESSAGE_BUFFER_SIZE];
-    format_message(site, uncompressed_data, message_buf, sizeof(message_buf));
+    format_message(&site, uncompressed_data, message_buf, sizeof(message_buf));
 
     /* Get level string */
-    const char* level_str = level_to_string(site->log_level);
+    const char* level_str = level_to_string(site.log_level);
 
     /* Format complete log line using pattern
      * Priority: 1) Per-log pattern, 2) Global pattern, 3) Default pattern */
     char output_buf[MESSAGE_BUFFER_SIZE + 256];  /* Extra space for timestamp, etc. */
-    const char* pattern = site->text_pattern ? site->text_pattern :
+    const char* pattern = site.text_pattern ? site.text_pattern :
                           (writer->pattern ? writer->pattern : "[%t] [%l] [%f:%n] %m");
 
-    format_entry_with_pattern(pattern, timestamp_buf, level_str, site,
+    format_entry_with_pattern(pattern, timestamp_buf, level_str, &site,
                               message_buf, output_buf, sizeof(output_buf));
 
     /* Write formatted line (with newline) */

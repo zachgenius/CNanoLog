@@ -82,7 +82,7 @@ int text_writer_write_entry(text_writer_t* writer,
                              uint64_t timestamp,
                              const char* arg_data,
                              uint16_t arg_data_len,
-                             const log_registry_t* registry);
+                             log_registry_t* registry);
 
 /**
  * Flush buffered data to disk.

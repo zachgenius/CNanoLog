@@ -136,6 +136,7 @@ static int buffer_registry_add(buffer_registry_t* registry, staging_buffer_t* bu
 static staging_buffer_t* get_or_create_staging_buffer(void);
 static void generate_dated_filename(const char* base_path, char* output, size_t output_size);
 static int check_and_rotate_if_needed(void);
+static void write_staged_entry(const char* entry_data, char* compressed_buf);
 
 /* ============================================================================
  * Timestamp Calibration (Phase 5)
@@ -517,6 +518,62 @@ int cnanolog_init_ex(const cnanolog_rotation_config_t* config) {
 }
 
 /* ============================================================================
+ * Staged Entry Writing
+ * ============================================================================ */
+
+static void write_staged_entry(const char* entry_data, char* compressed_buf) {
+    const cnanolog_entry_header_t* header = (const cnanolog_entry_header_t*)entry_data;
+
+    if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
+        text_writer_write_entry(g_text_writer,
+                                header->log_id,
+#ifndef CNANOLOG_NO_TIMESTAMPS
+                                header->timestamp,
+#else
+                                0,
+#endif
+                                entry_data + sizeof(cnanolog_entry_header_t),
+                                header->data_length,
+                                &g_registry);
+        return;
+    }
+
+    log_site_t site;
+    int site_found = log_registry_get(&g_registry, header->log_id, &site) == 0;
+    size_t compressed_len = 0;
+    const char* data_to_write = entry_data + sizeof(cnanolog_entry_header_t);
+    uint16_t data_len_to_write = header->data_length;
+
+    if (site_found && site.num_args > 0) {
+        int compress_result = compress_entry_args(
+            entry_data + sizeof(cnanolog_entry_header_t),
+            header->data_length,
+            compressed_buf,
+            &compressed_len,
+            &site);
+
+        if (compress_result == 0) {
+            data_to_write = compressed_buf;
+            data_len_to_write = (uint16_t)compressed_len;
+#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
+            g_stats.bytes_compressed_from += header->data_length;
+            g_stats.bytes_compressed_to += compressed_len;
+#endif
+        }
+    }
+
+    binwriter_write_entry(g_binary_writer,
+                          header->log_id,
+#ifndef CNANOLOG_NO_TIMESTAMPS
+                          header->timestamp,
+#else
+                          0,
+#endif
+                          data_to_write,
+                          data_len_to_write);
+}
+
+/* ============================================================================
  * Shutdown
  * ============================================================================ */
 
@@ -539,6 +596,7 @@ void cnanolog_shutdown(void) {
      * write to freed memory. The buffers persist across init/shutdown cycles.
      */
     char temp_buf[MAX_LOG_ENTRY_SIZE];
+    char compressed_buf[MAX_LOG_ENTRY_SIZE];
     uint32_t num_buffers = g_buffer_registry.count;  /* Read atomic counter */
 
     for (size_t i = 0; i < num_buffers; i++) {
@@ -551,9 +609,9 @@ void cnanolog_shutdown(void) {
         if (sb == NULL) continue;
 
         /* Drain remaining data from this buffer */
-        while (staging_available(sb) > 0) {
-            size_t nread = staging_read(sb, temp_buf, MAX_LOG_ENTRY_SIZE);
-            if (nread == 0) break;
+        while (staging_available(sb) >= sizeof(cnanolog_entry_header_t)) {
+            size_t nread = staging_read(sb, temp_buf, sizeof(cnanolog_entry_header_t));
+            if (nread < sizeof(cnanolog_entry_header_t)) break;
 
             /* Parse entry header */
             cnanolog_entry_header_t* header = (cnanolog_entry_header_t*)temp_buf;
@@ -566,31 +624,16 @@ void cnanolog_shutdown(void) {
                 continue;  /* Continue processing from beginning */
             }
 
-            /* Write real log entry based on output format */
-            if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
-                text_writer_write_entry(g_text_writer,
-                                       header->log_id,
-#ifndef CNANOLOG_NO_TIMESTAMPS
-                                       header->timestamp,
-#else
-                                       0,  /* No timestamp */
-#endif
-                                       temp_buf + sizeof(cnanolog_entry_header_t),
-                                       header->data_length,
-                                       &g_registry);
-            } else {
-                binwriter_write_entry(g_binary_writer,
-                                    header->log_id,
-#ifndef CNANOLOG_NO_TIMESTAMPS
-                                    header->timestamp,
-#else
-                                    0,  /* No timestamp */
-#endif
-                                    temp_buf + sizeof(cnanolog_entry_header_t),
-                                    header->data_length);
+            size_t entry_size = sizeof(cnanolog_entry_header_t) + header->data_length;
+            if (entry_size > MAX_LOG_ENTRY_SIZE || staging_available(sb) < entry_size) {
+                break;
             }
 
-            staging_consume(sb, nread);
+            nread = staging_read(sb, temp_buf, entry_size);
+            if (nread < entry_size) break;
+
+            write_staged_entry(temp_buf, compressed_buf);
+            staging_consume(sb, entry_size);
         }
 
         /* NOTE: Buffer persists - do NOT destroy */
@@ -824,62 +867,7 @@ static void* writer_thread_main(void* arg) {
 
                 header = (cnanolog_entry_header_t*)temp_buf;
 
-                /* Branch based on output format */
-                if (g_output_format == CNANOLOG_OUTPUT_TEXT) {
-                    /* TEXT MODE: Format and write human-readable text */
-                    text_writer_write_entry(g_text_writer,
-                                           header->log_id,
-#ifndef CNANOLOG_NO_TIMESTAMPS
-                                           header->timestamp,
-#else
-                                           0,  /* No timestamp */
-#endif
-                                           temp_buf + sizeof(cnanolog_entry_header_t),
-                                           header->data_length,
-                                           &g_registry);
-                } else {
-                    /* BINARY MODE: Compress and write binary data */
-                    log_site_t site;
-                    int site_found = log_registry_get(&g_registry, header->log_id, &site) == 0;
-
-                    size_t compressed_len = 0;
-                    const char* data_to_write;
-                    uint16_t data_len_to_write;
-
-                    if (site_found && site.num_args > 0) {
-                        int compress_result = compress_entry_args(
-                            temp_buf + sizeof(cnanolog_entry_header_t),
-                            header->data_length,
-                            compressed_buf,
-                            &compressed_len,
-                            &site);
-
-                        if (compress_result == 0) {
-                            data_to_write = compressed_buf;
-                            data_len_to_write = (uint16_t)compressed_len;
-#if !defined(CNANOLOG_NO_TIMESTAMPS) && !defined(CNANOLOG_NO_STATISTICS)
-                            g_stats.bytes_compressed_from += header->data_length;
-                            g_stats.bytes_compressed_to += compressed_len;
-#endif
-                        } else {
-                            data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
-                            data_len_to_write = header->data_length;
-                        }
-                    } else {
-                        data_to_write = temp_buf + sizeof(cnanolog_entry_header_t);
-                        data_len_to_write = header->data_length;
-                    }
-
-                    binwriter_write_entry(g_binary_writer,
-                                        header->log_id,
-#ifndef CNANOLOG_NO_TIMESTAMPS
-                                        header->timestamp,
-#else
-                                        0,  /* No timestamp */
-#endif
-                                        data_to_write,
-                                        data_len_to_write);
-                }
+                write_staged_entry(temp_buf, compressed_buf);
 
                 staging_consume(sb, entry_size);
                 entries_since_flush++;

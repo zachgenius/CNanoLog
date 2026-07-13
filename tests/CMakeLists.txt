@@ -23,6 +23,7 @@ set(TESTS
     test_burst_scenario
     debug_count
     test_per_log_pattern
+    test_shutdown_drain
 )
 
 # Build each test

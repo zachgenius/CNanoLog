@@ -8,18 +8,18 @@
 #include <atomic>
 #define CNANOLOG_CACHED_ID_TYPE std::atomic<uint32_t>
 #define CNANOLOG_CACHED_ID_INIT(value) {value}
-#define CNANOLOG_CACHED_ID_LOAD(value) (value).load(std::memory_order_acquire)
+#define CNANOLOG_CACHED_ID_LOAD(value) (value).load(std::memory_order_relaxed)
 #define CNANOLOG_CACHED_ID_STORE(target, value) \
-    (target).store((value), std::memory_order_release)
+    (target).store((value), std::memory_order_relaxed)
 extern "C" {
 #else
 #include <stdatomic.h>
 #define CNANOLOG_CACHED_ID_TYPE _Atomic uint32_t
 #define CNANOLOG_CACHED_ID_INIT(value) ATOMIC_VAR_INIT(value)
 #define CNANOLOG_CACHED_ID_LOAD(value) \
-    atomic_load_explicit(&(value), memory_order_acquire)
+    atomic_load_explicit(&(value), memory_order_relaxed)
 #define CNANOLOG_CACHED_ID_STORE(target, value) \
-    atomic_store_explicit(&(target), (value), memory_order_release)
+    atomic_store_explicit(&(target), (value), memory_order_relaxed)
 #endif
 
 /* ============================================================================

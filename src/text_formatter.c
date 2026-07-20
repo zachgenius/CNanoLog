@@ -145,6 +145,7 @@ static void format_message(const log_site_t* site,
             while (*fmt_ptr && strchr("-+ #0123456789.*lhz", *fmt_ptr)) {
                 fmt_ptr++;
             }
+            char conv = *fmt_ptr;     /* integer cases honor x/X/o below */
             if (*fmt_ptr) fmt_ptr++;  /* Skip conversion specifier */
 
             /* Extract and format argument */
@@ -163,7 +164,13 @@ static void format_message(const log_site_t* site,
                     int32_t val;
                     memcpy(&val, read_ptr, sizeof(val));
                     read_ptr += sizeof(val);
-                    int written = snprintf(write_ptr, remaining, "%d", val);
+                    int written;
+                    if (conv == 'x' || conv == 'X' || conv == 'o') {
+                        const char* f = (conv == 'x') ? "%x" : (conv == 'X') ? "%X" : "%o";
+                        written = snprintf(write_ptr, remaining, f, (unsigned int)val);
+                    } else {
+                        written = snprintf(write_ptr, remaining, "%d", val);
+                    }
                     write_ptr += (written > 0 && written < remaining) ? written : 0;
                     break;
                 }
@@ -172,7 +179,13 @@ static void format_message(const log_site_t* site,
                     int64_t val;
                     memcpy(&val, read_ptr, sizeof(val));
                     read_ptr += sizeof(val);
-                    int written = snprintf(write_ptr, remaining, "%lld", (long long)val);
+                    int written;
+                    if (conv == 'x' || conv == 'X' || conv == 'o') {
+                        const char* f = (conv == 'x') ? "%llx" : (conv == 'X') ? "%llX" : "%llo";
+                        written = snprintf(write_ptr, remaining, f, (unsigned long long)val);
+                    } else {
+                        written = snprintf(write_ptr, remaining, "%lld", (long long)val);
+                    }
                     write_ptr += (written > 0 && written < remaining) ? written : 0;
                     break;
                 }
@@ -181,7 +194,9 @@ static void format_message(const log_site_t* site,
                     uint32_t val;
                     memcpy(&val, read_ptr, sizeof(val));
                     read_ptr += sizeof(val);
-                    int written = snprintf(write_ptr, remaining, "%u", val);
+                    const char* f = (conv == 'x') ? "%x" : (conv == 'X') ? "%X"
+                                  : (conv == 'o') ? "%o" : "%u";
+                    int written = snprintf(write_ptr, remaining, f, val);
                     write_ptr += (written > 0 && written < remaining) ? written : 0;
                     break;
                 }
@@ -190,7 +205,9 @@ static void format_message(const log_site_t* site,
                     uint64_t val;
                     memcpy(&val, read_ptr, sizeof(val));
                     read_ptr += sizeof(val);
-                    int written = snprintf(write_ptr, remaining, "%llu", (unsigned long long)val);
+                    const char* f = (conv == 'x') ? "%llx" : (conv == 'X') ? "%llX"
+                                  : (conv == 'o') ? "%llo" : "%llu";
+                    int written = snprintf(write_ptr, remaining, f, (unsigned long long)val);
                     write_ptr += (written > 0 && written < remaining) ? written : 0;
                     break;
                 }

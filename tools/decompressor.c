@@ -530,8 +530,13 @@ static void format_log_message(decompressor_ctx_t* ctx, dict_entry_t* dict,
             while (*fmt_ptr && strchr("-+ #0123456789.*", *fmt_ptr)) {
                 fmt_ptr++;
             }
+            /* Skip length modifiers (l, ll, h, hh, z, j, t, L) */
+            while (*fmt_ptr && strchr("lhzjtL", *fmt_ptr)) {
+                fmt_ptr++;
+            }
 
-            /* Skip the conversion specifier */
+            /* Capture then skip the conversion specifier (integer cases honor x/X/o) */
+            char conv = *fmt_ptr;
             if (*fmt_ptr) fmt_ptr++;
 
             /* Extract and format argument based on type */
@@ -549,36 +554,54 @@ static void format_log_message(decompressor_ctx_t* ctx, dict_entry_t* dict,
                     int32_t val;
                     memcpy(&val, read_ptr, sizeof(val));
                     read_ptr += sizeof(val);
-                    write_ptr += snprintf(write_ptr,
-                                         sizeof(formatted) - (write_ptr - formatted),
-                                         "%d", val);
+                    if (conv == 'x' || conv == 'X' || conv == 'o') {
+                        const char* f = (conv == 'x') ? "%x" : (conv == 'X') ? "%X" : "%o";
+                        write_ptr += snprintf(write_ptr,
+                                             sizeof(formatted) - (write_ptr - formatted),
+                                             f, (unsigned int)val);
+                    } else {
+                        write_ptr += snprintf(write_ptr,
+                                             sizeof(formatted) - (write_ptr - formatted),
+                                             "%d", val);
+                    }
                     break;
                 }
                 case ARG_TYPE_INT64: {
                     int64_t val;
                     memcpy(&val, read_ptr, sizeof(val));
                     read_ptr += sizeof(val);
-                    write_ptr += snprintf(write_ptr,
-                                         sizeof(formatted) - (write_ptr - formatted),
-                                         "%lld", (long long)val);
+                    if (conv == 'x' || conv == 'X' || conv == 'o') {
+                        const char* f = (conv == 'x') ? "%llx" : (conv == 'X') ? "%llX" : "%llo";
+                        write_ptr += snprintf(write_ptr,
+                                             sizeof(formatted) - (write_ptr - formatted),
+                                             f, (unsigned long long)val);
+                    } else {
+                        write_ptr += snprintf(write_ptr,
+                                             sizeof(formatted) - (write_ptr - formatted),
+                                             "%lld", (long long)val);
+                    }
                     break;
                 }
                 case ARG_TYPE_UINT32: {
                     uint32_t val;
                     memcpy(&val, read_ptr, sizeof(val));
                     read_ptr += sizeof(val);
+                    const char* f = (conv == 'x') ? "%x" : (conv == 'X') ? "%X"
+                                  : (conv == 'o') ? "%o" : "%u";
                     write_ptr += snprintf(write_ptr,
                                          sizeof(formatted) - (write_ptr - formatted),
-                                         "%u", val);
+                                         f, val);
                     break;
                 }
                 case ARG_TYPE_UINT64: {
                     uint64_t val;
                     memcpy(&val, read_ptr, sizeof(val));
                     read_ptr += sizeof(val);
+                    const char* f = (conv == 'x') ? "%llx" : (conv == 'X') ? "%llX"
+                                  : (conv == 'o') ? "%llo" : "%llu";
                     write_ptr += snprintf(write_ptr,
                                          sizeof(formatted) - (write_ptr - formatted),
-                                         "%llu", (unsigned long long)val);
+                                         f, (unsigned long long)val);
                     break;
                 }
                 case ARG_TYPE_DOUBLE: {

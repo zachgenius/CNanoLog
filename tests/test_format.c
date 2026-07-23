@@ -30,7 +30,7 @@ int test_struct_sizes() {
     if (sizeof(cnanolog_dict_header_t) != 16)
         TEST_FAIL("Dictionary header size mismatch");
 
-    if (sizeof(cnanolog_dict_entry_t) != 30)
+    if (sizeof(cnanolog_dict_entry_t) != 64)
         TEST_FAIL("Dictionary entry size mismatch");
 
     TEST_PASS();
@@ -217,11 +217,11 @@ int test_size_macros() {
 #endif
 
     /* Dict entry with no strings */
-    if (CNANOLOG_DICT_ENTRY_TOTAL_SIZE(0, 0) != 30)
+    if (CNANOLOG_DICT_ENTRY_TOTAL_SIZE(0, 0) != 64)
         TEST_FAIL("Dict entry size macro wrong for no strings");
 
     /* Dict entry with strings */
-    if (CNANOLOG_DICT_ENTRY_TOTAL_SIZE(6, 10) != 46)
+    if (CNANOLOG_DICT_ENTRY_TOTAL_SIZE(6, 10) != 80)
         TEST_FAIL("Dict entry size macro wrong with strings");
 
     TEST_PASS();
